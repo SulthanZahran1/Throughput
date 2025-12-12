@@ -18,3 +18,4 @@ export const MAX_GRID_SIZE = 30;
 // Zone priority range
 export const MIN_ZONE_PRIORITY = 1;
 export const MAX_ZONE_PRIORITY = 10;
+export const ACTION_DELAY = 0.5; // Seconds for pickup/drop

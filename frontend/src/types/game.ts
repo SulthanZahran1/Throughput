@@ -36,6 +36,7 @@ export interface Crane {
     state: CraneState;
     carrying: Item | null;
     speed: number; // Cells per second
+    busyTimeRemaining?: number; // Seconds until current action completes
 }
 
 // === ORDERS ===
