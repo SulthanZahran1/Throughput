@@ -12,7 +12,7 @@ Guidelines for AI coding agents working on this project.
 4. **Keep docs updated.** When making changes, update `plan.md`, `tutorial.md`, or this file as needed.
 5. **No orphan TODOs.** If you add a TODO comment, create a corresponding issue or note in plan.md.
 6. **DO NOT USE BROWSER FUNCTIONALITY.**
-7. **Log all work in Implementation Plan.** After every commit or doc modification, add an entry to the [Implementation Plan](#implementation-plan) section at the bottom of this file.
+7. **Log all work in CHANGELOG.md.** After every commit or doc modification, add an entry to [CHANGELOG.md](./CHANGELOG.md).
 
 ---
 
@@ -54,7 +54,7 @@ See `docs/plan.md` for full architecture, roadmap, and data structures.
 
 1. Use `/tmp` folder for helper scripts (bash, Python, etc.). Do not commit them.
 2. Do not create README files to track progress. Use `plan.md` or this file.
-3. After modifying code or docs, update the [Implementation Plan](#implementation-plan) section with your commits and changes.
+3. After modifying code or docs, update [CHANGELOG.md](./CHANGELOG.md) with your commits and changes.
 4. Use linters before committing. If build fails 3× in a row, step back and try a different debugging approach.
 
 ### TypeScript / React
@@ -261,58 +261,10 @@ psql -h localhost -U throughput -d throughput
 3. Check this file for code conventions
 4. If still unclear: **ask the human**
 
-**Before ending a session:** Always update the [Implementation Plan](#implementation-plan) with your commits and doc changes.
+**Before ending a session:** Always update `CHANGELOG.md` with your commits and doc changes.
 
 ---
 
-## Implementation Plan
+## Implementation Log
 
-Track all commits and documentation changes here. Add new entries at the top.
-
-### Entry Format
-
-```
-### [DATE] - [SESSION_ID or AGENT_ID]
-
-**Commits:**
-- `<commit_hash>` <type>(<scope>): <subject>
-- `<commit_hash>` <type>(<scope>): <subject>
-
-**Doc Changes:**
-- `plan.md`: <what changed>
-- `tutorial.md`: <what changed>
-- `AGENTS.md`: <what changed>
-
-**Notes:** <any context, blockers, or decisions made>
-
----
-```
-
-### Log
-
----
-
-### 2025-12-12 - Phase 1 Implementation
-
-**Commits:**
-- `b37acd3` feat(engine): implement core game loop and manual controls
-
-**Doc Changes:**
-- `task.md`: Marked Phase 1 items as complete
-- `walkthrough.md`: Added Phase 1 walkthrough
-
-**Notes:** Implemented core loop, crane actions, and order system. Manual play is now possible.
-
----
-
-### 2025-12-12 - Initial Setup
-
-**Commits:**
-- (none yet - project scaffolding pending)
-
-**Doc Changes:**
-- `plan.md`: Created initial spec (architecture, game design, data structures, API, roadmap)
-- `tutorial.md`: Created onboarding design (levels 1-5, hint system, FTUE)
-- `AGENTS.md`: Created agent guidelines
-
-**Notes:** Project planning complete. Ready to begin Phase 0 (Foundation).
+See [CHANGELOG.md](./CHANGELOG.md) for the full history of changes and commits.
