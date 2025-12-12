@@ -22,7 +22,7 @@ All notable changes to this project will be documented in this file.
 - `b37acd3` feat(engine): implement core game loop and manual controls
 - `a4f0276` docs(agents): update implementation plan with phase 1 details
 - `02359b7` docs: move implementation log to CHANGELOG.md
-- `(pending)` docs(plan): mark phase 1 as complete
+- `8d32361` docs(plan): mark phase 1 as complete
 
 ---
 
