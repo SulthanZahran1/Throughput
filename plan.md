@@ -147,12 +147,12 @@ Architecture supports future modes:
 
 ### Phase 2: Automation System (Week 6-8)
 
-- [ ] Zone data structure
-- [ ] Zone painting UI (click-drag to paint)
-- [ ] Zone rule assignment (item types, priority)
-- [ ] Storage decision engine (evaluate zones → pick slot)
-- [ ] Retrieval mode toggle (FIFO / Deadline / Nearest)
-- [ ] Crane mode toggle (Single / Dual command)
+- [x] Zone data structure
+- [x] Zone painting UI (click-drag to paint)
+- [x] Zone rule assignment (item types, priority)
+- [x] Storage decision engine (evaluate zones → pick slot)
+- [x] Retrieval mode toggle (FIFO / Deadline / Nearest)
+- [x] Crane mode toggle (Single / Dual command)
 
 ### Phase 3: Progression (Week 9-10)
 

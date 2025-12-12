@@ -1,5 +1,6 @@
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import { Grid } from '../game/Grid';
+import { ZoneEditor } from '../editor/ZoneEditor';
 import { useGameStore } from '../../store/gameStore';
 import { useUIStore } from '../../store/uiStore';
 import { useGameLoop } from '../../hooks/useGameLoop';
@@ -23,6 +24,7 @@ export function GameScreen() {
     const realTime = useGameStore((state) => state.realTime);
 
     const setScreen = useUIStore((state) => state.setScreen);
+    const [showZoneEditor, setShowZoneEditor] = useState(false);
 
     // Start game loop
     useGameLoop();
@@ -34,7 +36,15 @@ export function GameScreen() {
     }, [initializeGrid]);
 
     const handleSlotClick = (x: number, y: number) => {
-        if (!crane || !grid) return;
+        if (!crane || !grid) {
+            console.warn('GameScreen: Missing crane or grid state');
+            return;
+        }
+
+        // Auto-resume if paused
+        if (isPaused) {
+            setPaused(false);
+        }
 
         // If not at target, move there
         if (crane.x !== x || crane.y !== y) {
@@ -84,13 +94,25 @@ export function GameScreen() {
                         {isPaused ? 'Resume' : 'Pause'}
                     </button>
                     <button
+                        className={`px-4 py-2 rounded text-white ${showZoneEditor ? 'bg-blue-600 hover:bg-blue-500' : 'bg-slate-700 hover:bg-slate-600'
+                            }`}
+                        onClick={() => setShowZoneEditor(!showZoneEditor)}
+                    >
+                        Zones
+                    </button>
+                    <button
                         className="px-4 py-2 rounded bg-slate-700 hover:bg-slate-600 text-white"
-                        onClick={() => generateOrder()}
+                        onClick={() => {
+                            if (isPaused) setPaused(false);
+                            generateOrder();
+                        }}
                     >
                         + Order
                     </button>
                 </div>
             </div>
+
+            {showZoneEditor && <ZoneEditor />}
 
             <div className="flex gap-8 items-start">
                 {/* Left Panel: Orders */}
@@ -134,30 +156,111 @@ export function GameScreen() {
                     </div>
                 </div>
 
-                {/* Right Panel: Stats */}
-                <div className="w-64 bg-slate-800 p-4 rounded-lg min-h-[400px]">
-                    <h2 className="text-lg font-bold mb-4 text-slate-300">Stats</h2>
-                    <div className="space-y-2 text-white">
-                        <div className="flex justify-between">
-                            <span>Completed</span>
-                            <span className="text-green-400">{stats.ordersCompleted}</span>
+                {/* Right Panel: Stats & Controls */}
+                <div className="w-64 bg-slate-800 p-4 rounded-lg min-h-[400px] flex flex-col gap-6">
+                    <div>
+                        <h2 className="text-lg font-bold mb-4 text-slate-300">Stats</h2>
+                        <div className="space-y-2 text-white">
+                            <div className="flex justify-between">
+                                <span>Completed</span>
+                                <span className="text-green-400">{stats.ordersCompleted}</span>
+                            </div>
+                            <div className="flex justify-between">
+                                <span>Failed</span>
+                                <span className="text-red-400">{stats.ordersFailed}</span>
+                            </div>
                         </div>
-                        <div className="flex justify-between">
-                            <span>Failed</span>
-                            <span className="text-red-400">{stats.ordersFailed}</span>
+                    </div>
+
+                    <div>
+                        <h2 className="text-lg font-bold mb-4 text-slate-300">Controls</h2>
+
+                        <div className="mb-6">
+                            <label className="block text-xs font-medium text-slate-400 mb-2 uppercase tracking-wider">Retrieval Mode</label>
+                            <div className="flex flex-col gap-1">
+                                {[
+                                    { id: 'fifo', label: 'FIFO', desc: 'Oldest First' },
+                                    { id: 'deadline', label: 'Deadline', desc: 'Urgent First' },
+                                    { id: 'nearest', label: 'Nearest', desc: 'Closest Item' },
+                                ].map((mode) => (
+                                    <button
+                                        key={mode.id}
+                                        onClick={() => {
+                                            useGameStore.getState().setRetrievalMode(mode.id as any);
+                                        }}
+                                        className={`flex items-center justify-between px-3 py-2 rounded text-sm transition-all ${useGameStore((state) => state.retrievalMode) === mode.id
+                                            ? 'bg-blue-600 text-white shadow-md'
+                                            : 'bg-slate-700/50 text-slate-400 hover:bg-slate-700 hover:text-slate-200'
+                                            }`}
+                                    >
+                                        <span className="font-medium">{mode.label}</span>
+                                        <span className={`text-xs ${useGameStore((state) => state.retrievalMode) === mode.id
+                                            ? 'text-blue-200'
+                                            : 'text-slate-500'
+                                            }`}>{mode.desc}</span>
+                                    </button>
+                                ))}
+                            </div>
+                        </div>
+
+                        <div>
+                            <label className="block text-xs font-medium text-slate-400 mb-2 uppercase tracking-wider">Crane Mode</label>
+                            <div className="flex bg-slate-900/50 p-1 rounded-lg border border-slate-700/50">
+                                <button
+                                    className={`flex-1 py-1.5 text-xs font-medium rounded-md transition-all ${useGameStore((state) => state.craneMode) === 'single'
+                                        ? 'bg-slate-700 text-white shadow-sm ring-1 ring-slate-600'
+                                        : 'text-slate-500 hover:text-slate-300'
+                                        }`}
+                                    onClick={() => {
+                                        useGameStore.getState().setCraneMode('single');
+                                    }}
+                                >
+                                    Single
+                                </button>
+                                <button
+                                    className={`flex-1 py-1.5 text-xs font-medium rounded-md transition-all ${useGameStore((state) => state.craneMode) === 'dual'
+                                        ? 'bg-slate-700 text-white shadow-sm ring-1 ring-slate-600'
+                                        : 'text-slate-500 hover:text-slate-300'
+                                        }`}
+                                    onClick={() => {
+                                        useGameStore.getState().setCraneMode('dual');
+                                    }}
+                                >
+                                    Dual
+                                </button>
+                            </div>
+                            <div className="mt-2 text-[10px] text-slate-500 text-center">
+                                {useGameStore((state) => state.craneMode) === 'single'
+                                    ? 'Standard store & retrieve cycles'
+                                    : 'Combined trips for efficiency'}
+                            </div>
                         </div>
                     </div>
                 </div>
             </div>
 
             {/* Instructions */}
-            <p className="mt-8 text-slate-500 text-sm max-w-xl text-center">
-                1. Click <b>+ Order</b> to generate demand.<br />
-                2. Click <b>I/O Port</b> (yellow) to pick up items.<br />
-                3. Click <b>Empty Slot</b> to store items.<br />
-                4. Click <b>Occupied Slot</b> to retrieve items.<br />
-                5. Click <b>I/O Port</b> to deliver matching items.
-            </p>
+            {/* Instructions */}
+            <div className="mt-8 text-slate-500 text-sm max-w-xl text-center bg-slate-800/50 p-4 rounded-lg border border-slate-700/50">
+                <h3 className="text-slate-400 font-bold mb-2 uppercase tracking-wider text-xs">How to Play</h3>
+                <div className="grid grid-cols-2 gap-x-8 gap-y-2 text-left">
+                    <div>
+                        <span className="text-blue-400 font-bold">1.</span> Click <b className="text-slate-300">+ Order</b> to get work.
+                    </div>
+                    <div>
+                        <span className="text-blue-400 font-bold">2.</span> Click <b className="text-yellow-400">I/O Port</b> to pick up.
+                    </div>
+                    <div>
+                        <span className="text-blue-400 font-bold">3.</span> Click <b className="text-slate-300">Empty Slot</b> to store.
+                    </div>
+                    <div>
+                        <span className="text-blue-400 font-bold">4.</span> Click <b className="text-slate-300">Item</b> to retrieve.
+                    </div>
+                    <div className="col-span-2 mt-2 pt-2 border-t border-slate-700/50 text-center text-xs text-slate-400">
+                        <span className="text-blue-400">Tip:</span> Use <b>Zones</b> to automate storage and retrieval!
+                    </div>
+                </div>
+            </div>
         </div>
     );
 }

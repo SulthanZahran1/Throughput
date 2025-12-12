@@ -58,14 +58,14 @@ export function Crane({ crane, cellSize }: CraneProps) {
                 </svg>
 
                 {/* State indicator */}
-                {state !== 'idle' && (
+                {state !== 'IDLE' && (
                     <motion.div
                         className="absolute -top-1 -right-1 w-3 h-3 rounded-full"
                         style={{
                             backgroundColor:
-                                state === 'moving'
+                                state === 'MOVING'
                                     ? COLORS.warning
-                                    : state === 'storing'
+                                    : state === 'TRANSFERRING'
                                         ? COLORS.success
                                         : COLORS.itemBlue,
                         }}

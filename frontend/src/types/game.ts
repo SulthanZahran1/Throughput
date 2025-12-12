@@ -26,17 +26,26 @@ export interface Item {
 }
 
 // === CRANE ===
-export type CraneState = 'idle' | 'moving' | 'storing' | 'retrieving';
+// === CRANE ===
+export type CraneState = 'IDLE' | 'MOVING' | 'TRANSFERRING';
+
+export type MissionType = 'STORE' | 'RETRIEVE';
+
+export interface CraneMission {
+    type: MissionType;
+    targetX: number;
+    targetY: number;
+    item: Item; // The item being moved
+}
 
 export interface Crane {
     x: number;
     y: number;
-    targetX: number;
-    targetY: number;
     state: CraneState;
+    mission: CraneMission | null;
     carrying: Item | null;
     speed: number; // Cells per second
-    busyTimeRemaining?: number; // Seconds until current action completes
+    busyTimeRemaining: number; // Seconds until current action completes
 }
 
 // === ORDERS ===

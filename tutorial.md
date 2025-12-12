@@ -494,15 +494,15 @@ Every major UI panel has a `?` icon that opens contextual help:
 └─────────────────────────────────────────────────────────────┘
 ```
 
-### 5.2 Tooltip on Hover
+### 5.2 Helper Text & Tooltips
 
-| Element | Tooltip |
-|---------|---------|
+| Element | Helper Text / Tooltip |
+|---------|-----------------------|
 | Cycle Time stat | "Average time from order received to delivered" |
 | JPH stat | "Jobs Per Hour—your throughput rate" |
 | Priority slider | "Higher priority zones are filled first" |
-| Dual Command toggle | "Crane combines store + retrieve in one trip" |
-| Order timer | "Time remaining before this order expires" |
+| Dual Command toggle | "Combined trips for efficiency" |
+| Retrieval Mode | "FIFO: Oldest First", "Deadline: Urgent First", "Nearest: Closest Item" |
 
 ### 5.3 Pause Menu Help
 
@@ -668,4 +668,6 @@ See `plan.md` Section 4.6 for full sandbox specification.
 
 | Version | Date | Changes |
 |---------|------|---------|
-| 0.1 | 2024-XX-XX | Initial draft |
+| 0.1 | 2024-12-12 | Initial draft |
+| 0.2 | 2024-12-12 | Updated UI references for Phase 2 UX Polish |
+```

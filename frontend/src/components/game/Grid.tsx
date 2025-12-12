@@ -13,12 +13,51 @@ interface GridProps {
 export function Grid({ cellSize = 40, onSlotClick }: GridProps) {
     const grid = useGameStore((state) => state.grid);
     const crane = useGameStore((state) => state.crane);
+    const zones = useGameStore((state) => state.zones);
+    const editingZoneId = useGameStore((state) => state.editingZoneId);
+    const paintCell = useGameStore((state) => state.paintCell);
 
     // Generate slot array from grid map
     const slots = useMemo(() => {
         if (!grid) return [];
         return Array.from(grid.slots.values());
     }, [grid]);
+
+    const getZoneColor = (zoneId: string | null) => {
+        if (!zoneId) return undefined;
+        const zone = zones.find(z => z.id === zoneId);
+        if (!zone) return undefined;
+
+        // Visual feedback during editing
+        if (editingZoneId) {
+            if (zoneId === editingZoneId) {
+                // Highlight current zone
+                return zone.color;
+            } else {
+                // Dim other zones
+                return `${zone.color}40`; // 25% opacity (assuming hex color)
+            }
+        }
+
+        return zone.color;
+    };
+
+    const handleSlotMouseDown = (x: number, y: number) => {
+        if (editingZoneId) {
+            paintCell(x, y, 'add');
+        } else {
+            onSlotClick?.(x, y);
+        }
+    };
+
+    const handleSlotMouseEnter = (x: number, y: number, e: React.MouseEvent) => {
+        if (editingZoneId && e.buttons === 1) {
+            paintCell(x, y, 'add');
+        }
+    };
+
+    // Cursor style based on mode
+    const cursorStyle = editingZoneId ? 'cursor-crosshair' : 'cursor-pointer';
 
     if (!grid) {
         return (
@@ -33,7 +72,7 @@ export function Grid({ cellSize = 40, onSlotClick }: GridProps) {
 
     return (
         <div
-            className="relative rounded-lg overflow-hidden"
+            className={`relative rounded-lg overflow-hidden select-none ${cursorStyle}`}
             style={{
                 width: gridWidth,
                 height: gridHeight,
@@ -52,7 +91,9 @@ export function Grid({ cellSize = 40, onSlotClick }: GridProps) {
                         slot={slot}
                         cellSize={cellSize}
                         isIOPort={isIOPort}
-                        onClick={() => onSlotClick?.(slot.x, slot.y)}
+                        zoneColor={getZoneColor(slot.zoneId)}
+                        onClick={() => handleSlotMouseDown(slot.x, slot.y)}
+                        onMouseEnter={(e: any) => handleSlotMouseEnter(slot.x, slot.y, e)}
                     />
                 );
             })}

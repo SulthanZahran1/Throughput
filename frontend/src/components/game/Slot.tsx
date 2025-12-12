@@ -6,10 +6,12 @@ interface SlotProps {
     slot: SlotType;
     cellSize: number;
     isIOPort?: boolean;
+    zoneColor?: string;
     onClick?: () => void;
+    onMouseEnter?: (e: React.MouseEvent) => void;
 }
 
-export function Slot({ slot, cellSize, isIOPort = false, onClick }: SlotProps) {
+export function Slot({ slot, cellSize, isIOPort = false, zoneColor, onClick, onMouseEnter }: SlotProps) {
     const { x, y, state, item } = slot;
 
     // Determine background color
@@ -32,13 +34,22 @@ export function Slot({ slot, cellSize, isIOPort = false, onClick }: SlotProps) {
                 border: `1px solid ${COLORS.gridLines}`,
             }}
             onClick={onClick}
+            onMouseEnter={onMouseEnter}
             whileHover={{ scale: 1.02 }}
             whileTap={{ scale: 0.98 }}
         >
+            {/* Zone overlay */}
+            {zoneColor && (
+                <div
+                    className="absolute inset-0 rounded-sm pointer-events-none"
+                    style={{ backgroundColor: zoneColor }}
+                />
+            )}
+
             {/* Item indicator */}
             {item && (
                 <motion.div
-                    className="rounded-full"
+                    className="rounded-full z-10"
                     style={{
                         width: cellSize * 0.6,
                         height: cellSize * 0.6,
@@ -53,7 +64,7 @@ export function Slot({ slot, cellSize, isIOPort = false, onClick }: SlotProps) {
             {/* I/O Port indicator */}
             {isIOPort && (
                 <span
-                    className="font-bold text-xs"
+                    className="font-bold text-xs z-10"
                     style={{ color: COLORS.bgPrimary }}
                 >
                     I/O
