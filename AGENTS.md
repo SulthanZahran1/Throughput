@@ -7,7 +7,7 @@ Guidelines for AI coding agents working on this project.
 ## Core Rules
 
 1. **Ask before deciding.** Do not make architectural decisions without human input. If unclear, ask clarifying questions first.
-2. **Atomic commits.** Never commit half-done work. Never commit code that doesn't compile/build.
+2. **Atomic commits.** Never commit half-done work. Never commit code that doesn't compile/build. Commit when you have a complete, working feature.
 3. **Terminal-first debugging.** Do not use browser DevTools as primary debug method. Use terminal, logs, and test files.
 4. **Keep docs updated.** When making changes, update `plan.md`, `tutorial.md`, or this file as needed.
 5. **No orphan TODOs.** If you add a TODO comment, create a corresponding issue or note in plan.md.
