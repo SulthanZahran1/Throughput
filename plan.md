@@ -137,13 +137,13 @@ Architecture supports future modes:
 
 ### Phase 1: Core Loop (Week 3-5)
 
-- [ ] Slot state (empty, occupied, item type)
-- [ ] Item types (3 types: Red, Blue, Green)
-- [ ] I/O Port location
-- [ ] Order queue (incoming orders with timers)
-- [ ] Order fulfillment (retrieve item → deliver to port)
-- [ ] Store operation (receive from port → place in slot)
-- [ ] Basic win/lose detection (shift timer, failed orders)
+- [x] Slot state (empty, occupied, item type)
+- [x] Item types (3 types: Red, Blue, Green)
+- [x] I/O Port location
+- [x] Order queue (incoming orders with timers)
+- [x] Order fulfillment (retrieve item → deliver to port)
+- [x] Store operation (receive from port → place in slot)
+- [x] Basic win/lose detection (shift timer, failed orders)
 
 ### Phase 2: Automation System (Week 6-8)
 
