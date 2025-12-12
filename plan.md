@@ -164,7 +164,7 @@ Architecture supports future modes:
 
 ### Phase 4: Backend Integration (Week 11-13)
 
-- [ ] Go backend scaffolding
+- [x] Go backend scaffolding
 - [ ] OAuth integration (Google)
 - [ ] User model + progress storage
 - [ ] Level fetching API

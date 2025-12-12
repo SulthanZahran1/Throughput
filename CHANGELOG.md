@@ -4,7 +4,16 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
-## [Phase 2] - 2025-12-12
+## [Phase 4] - 2025-12-12
+ 
+ ### Added
+ - **Backend Scaffolding**: Initialized Go module `throughput-backend`.
+ - **Logging**: Implemented structured logging with `slog` and Gin middleware.
+ - **Server**: Basic HTTP server setup on port 8080.
+ 
+ ---
+ 
+ ## [Phase 2] - 2025-12-12
 
 ### Added
 - **Zone System**: Create, edit, and delete zones with custom colors and priorities.
