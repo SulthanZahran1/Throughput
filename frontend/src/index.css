@@ -1,0 +1,60 @@
+@import "tailwindcss";
+
+/* === THROUGHPUT DESIGN SYSTEM === */
+
+/* Custom CSS variables matching plan.md Section 7.4 */
+:root {
+  /* Background colors */
+  --color-bg-primary: #0f172a;
+  --color-bg-slot: #1e293b;
+  --color-grid-lines: #334155;
+
+  /* Entity colors */
+  --color-crane: #22d3ee;
+  --color-io-port: #facc15;
+
+  /* Item colors */
+  --color-item-red: #ef4444;
+  --color-item-blue: #3b82f6;
+  --color-item-green: #22c55e;
+  --color-item-yellow: #facc15;
+  --color-item-purple: #a855f7;
+
+  /* Zone overlays (40% opacity) */
+  --color-zone-red: #ef444466;
+  --color-zone-blue: #3b82f666;
+  --color-zone-green: #22c55e66;
+
+  /* Semantic colors */
+  --color-success: #22c55e;
+  --color-warning: #f59e0b;
+  --color-danger: #ef4444;
+
+  /* Typography */
+  --font-sans: 'Inter', system-ui, -apple-system, sans-serif;
+  --font-mono: 'JetBrains Mono', ui-monospace, monospace;
+}
+
+/* Base styles - dark mode only per AGENTS.md */
+html {
+  color-scheme: dark;
+}
+
+body {
+  margin: 0;
+  font-family: var(--font-sans);
+  background-color: var(--color-bg-primary);
+  color: white;
+  min-height: 100vh;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+#root {
+  min-height: 100vh;
+}
+
+/* Monospace for stats/metrics */
+.font-mono {
+  font-family: var(--font-mono);
+}
