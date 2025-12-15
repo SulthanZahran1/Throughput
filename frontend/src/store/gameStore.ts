@@ -10,12 +10,17 @@ import type {
     Item,
     ItemType,
 } from '../types/game';
-import { DEFAULT_CRANE_SPEED, ACTION_DELAY } from '../constants/config';
+import type { LevelDefinition, ShiftResult } from '../types/level';
+import { DEFAULT_CRANE_SPEED, ACTION_DELAY, MAX_FAILED_ORDERS } from '../constants/config';
 import { findBestStorageSlot, findBestRetrieval } from '../engine/decision';
+import { logger } from '../utils/logger';
 
 interface GameStore {
     // Level
     levelId: string | null;
+    currentLevel: LevelDefinition | null;
+    shiftDuration: number;
+    lastOrderTime: number; // Track when last order was spawned
 
     // Time
     shiftTime: number;
@@ -40,6 +45,8 @@ interface GameStore {
     setPaused: (paused: boolean) => void;
     setRetrievalMode: (mode: RetrievalMode) => void;
     setCraneMode: (mode: CraneMode) => void;
+    loadLevel: (level: LevelDefinition) => void;
+    getShiftResult: () => ShiftResult | null;
 
     // Core Loop
     tick: (dt: number) => void;
@@ -90,6 +97,9 @@ const ITEM_TYPES: ItemType[] = ['red', 'blue', 'green', 'yellow', 'purple'];
 export const useGameStore = create<GameStore>((set, get) => ({
     // Initial state
     levelId: null,
+    currentLevel: null,
+    shiftDuration: 0,
+    lastOrderTime: -999, // Start negative so first order spawns immediately
     shiftTime: 0,
     realTime: 0,
     isPaused: true,
@@ -108,6 +118,128 @@ export const useGameStore = create<GameStore>((set, get) => ({
     setRetrievalMode: (mode) => set({ retrievalMode: mode }),
     setCraneMode: (mode) => set({ craneMode: mode }),
 
+    loadLevel: (level: LevelDefinition) => {
+        // Create grid
+        const slots = new Map();
+        for (let x = 0; x < level.gridWidth; x++) {
+            for (let y = 0; y < level.gridHeight; y++) {
+                const isBlocked = level.blockedCells?.some(
+                    (c) => c.x === x && c.y === y
+                );
+                slots.set(`${x},${y}`, {
+                    x,
+                    y,
+                    state: isBlocked ? 'blocked' : 'empty',
+                    item: null,
+                    zoneId: null,
+                });
+            }
+        }
+
+        // Place initial inventory
+        if (level.initialInventory) {
+            for (const inv of level.initialInventory) {
+                const key = `${inv.slot.x},${inv.slot.y}`;
+                const slot = slots.get(key);
+                if (slot && slot.state === 'empty') {
+                    slots.set(key, {
+                        ...slot,
+                        state: 'occupied',
+                        item: {
+                            id: crypto.randomUUID(),
+                            type: inv.type,
+                            storedAt: 0,
+                        },
+                    });
+                }
+            }
+        }
+
+        const grid = {
+            width: level.gridWidth,
+            height: level.gridHeight,
+            slots,
+            ioPort: level.ioPortPosition,
+        };
+
+        const crane = {
+            ...initialCrane,
+            x: level.ioPortPosition.x,
+            y: level.ioPortPosition.y,
+            state: 'IDLE' as const,
+            mission: null,
+        };
+
+        set({
+            levelId: level.id,
+            currentLevel: level,
+            shiftDuration: level.shiftDuration,
+            shiftTime: level.shiftDuration,
+            lastOrderTime: -999, // Start negative so first order spawns immediately
+            realTime: 0,
+            isPaused: true,
+            grid,
+            crane,
+            orders: [],
+            zones: [],
+            stats: { ...initialStats },
+        });
+    },
+
+    getShiftResult: () => {
+        const state = get();
+        if (!state.currentLevel) return null;
+
+        const level = state.currentLevel;
+        const isLose = state.stats.ordersFailed >= MAX_FAILED_ORDERS;
+        const isWin = !isLose && state.shiftTime <= 0;
+
+        if (!isWin && !isLose) return null;
+
+        const avgCycleTime =
+            state.stats.ordersCompleted > 0
+                ? state.stats.totalCycleTime / state.stats.ordersCompleted
+                : 0;
+
+        const duration = state.realTime;
+        const jph = duration > 0 ? (state.stats.ordersCompleted / duration) * 3600 : 0;
+
+        // Calculate stars
+        let starsEarned = 0;
+        if (isWin) {
+            const checkThreshold = (t: typeof level.starThresholds.one): boolean => {
+                switch (t.metric) {
+                    case 'survival':
+                        return true;
+                    case 'jph':
+                        return jph >= t.value;
+                    case 'cycle_time':
+                        return avgCycleTime <= t.value;
+                    case 'orders_completed':
+                        return state.stats.ordersCompleted >= t.value;
+                    default:
+                        return false;
+                }
+            };
+
+            if (checkThreshold(level.starThresholds.one)) starsEarned = 1;
+            if (starsEarned >= 1 && checkThreshold(level.starThresholds.two)) starsEarned = 2;
+            if (starsEarned >= 2 && checkThreshold(level.starThresholds.three)) starsEarned = 3;
+        }
+
+        return {
+            levelId: level.id,
+            outcome: isWin ? 'win' : 'lose',
+            ordersCompleted: state.stats.ordersCompleted,
+            ordersFailed: state.stats.ordersFailed,
+            avgCycleTime,
+            jph,
+            duration,
+            starsEarned,
+            newUnlock: isWin && starsEarned >= 1 ? level.unlocksFeature : undefined,
+        } as ShiftResult;
+    },
+
     tick: (dt) => {
         const state = get();
         if (state.isPaused) return;
@@ -117,17 +249,62 @@ export const useGameStore = create<GameStore>((set, get) => ({
         const newRealTime = state.realTime + dt;
 
         // Update orders (check deadlines)
-        const newOrders = state.orders.map(o => {
+        let newOrders = state.orders.map(o => {
             if (o.status === 'pending' && newRealTime > o.deadline) {
                 return { ...o, status: 'failed' as const };
             }
             return o;
         });
 
+        // Count newly failed orders
+        const justFailed = newOrders.filter(
+            (o, i) => o.status === 'failed' && state.orders[i]?.status === 'pending'
+        ).length;
+
+        // --- AUTO ORDER GENERATION ---
+        let newLastOrderTime = state.lastOrderTime;
+        if (state.currentLevel && newShiftTime > 0) {
+            const level = state.currentLevel;
+            // Find active wave for current time
+            const activeWave = level.orderSchedule.find(
+                wave => newRealTime >= wave.startTime && newRealTime < wave.endTime
+            );
+
+            if (activeWave && activeWave.ordersPerMinute > 0) {
+                const orderInterval = 60 / activeWave.ordersPerMinute;
+                if (newRealTime - newLastOrderTime >= orderInterval) {
+                    // Generate order based on wave
+                    const totalWeight = activeWave.itemDistribution.reduce((sum, d) => sum + d.weight, 0);
+                    let rand = Math.random() * totalWeight;
+                    let selectedType: ItemType = activeWave.itemDistribution[0]?.type || 'red';
+                    for (const dist of activeWave.itemDistribution) {
+                        rand -= dist.weight;
+                        if (rand <= 0) {
+                            selectedType = dist.type;
+                            break;
+                        }
+                    }
+
+                    const timerDuration = activeWave.timerRange.min +
+                        Math.random() * (activeWave.timerRange.max - activeWave.timerRange.min);
+
+                    const newOrder: Order = {
+                        id: crypto.randomUUID(),
+                        itemType: selectedType,
+                        createdAt: newRealTime,
+                        deadline: newRealTime + timerDuration,
+                        status: 'pending',
+                    };
+                    newOrders = [...newOrders, newOrder];
+                    newLastOrderTime = newRealTime;
+                }
+            }
+        }
+
         // --- FSM LOGIC ---
-        let nextCrane = state.crane ? { ...state.crane } : null;
+        const nextCrane = state.crane ? { ...state.crane } : null;
         let nextGrid = state.grid;
-        let nextStats = state.stats;
+        let nextStats = { ...state.stats, ordersFailed: state.stats.ordersFailed + justFailed };
         let nextOrdersState = newOrders;
 
         if (nextCrane && nextGrid) {
@@ -159,13 +336,25 @@ export const useGameStore = create<GameStore>((set, get) => ({
                         // Transfer complete
                         // Perform the actual logic (Store/Retrieve/Pickup/Drop)
 
+                        logger.fsm('TRANSFERRING complete', {
+                            mission: nextCrane.mission?.type,
+                            pos: { x: nextCrane.x, y: nextCrane.y },
+                            target: { x: nextCrane.mission?.targetX, y: nextCrane.mission?.targetY },
+                            ioPort: { x: nextGrid.ioPort.x, y: nextGrid.ioPort.y },
+                            carrying: nextCrane.carrying?.type || 'none',
+                        });
+
                         if (nextCrane.mission?.type === 'STORE') {
                             // We are either at IO (Pickup) or at Slot (Drop)
-                            if (nextCrane.x === nextGrid.ioPort.x && nextCrane.y === nextGrid.ioPort.y && !nextCrane.carrying) {
-                                // PICKUP FROM IO
+                            const atIO = nextCrane.x === nextGrid.ioPort.x && nextCrane.y === nextGrid.ioPort.y;
+                            const atTarget = nextCrane.x === nextCrane.mission.targetX && nextCrane.y === nextCrane.mission.targetY;
+
+                            if (atIO && !nextCrane.carrying) {
+                                // PICKUP FROM IO - use level's item types
+                                const levelItemTypes = state.currentLevel?.itemTypes || ITEM_TYPES.slice(0, 3);
                                 const newItem: Item = {
                                     id: crypto.randomUUID(),
-                                    type: ITEM_TYPES[Math.floor(Math.random() * 3)] as ItemType,
+                                    type: levelItemTypes[Math.floor(Math.random() * levelItemTypes.length)] as ItemType,
                                     storedAt: newRealTime,
                                 };
                                 nextCrane.carrying = newItem;
@@ -182,11 +371,12 @@ export const useGameStore = create<GameStore>((set, get) => ({
                                     nextCrane.state = 'IDLE';
                                     nextCrane.mission = null;
                                 }
-                            } else {
+                            } else if (atTarget && nextCrane.carrying) {
                                 // DROP AT SLOT
+                                logger.fsm('STORE: Dropping at target', { x: nextCrane.x, y: nextCrane.y });
                                 const key = `${nextCrane.x},${nextCrane.y}`;
                                 const slot = nextGrid.slots.get(key);
-                                if (slot && slot.state === 'empty' && nextCrane.carrying) {
+                                if (slot && slot.state === 'empty') {
                                     const newSlots = new Map(nextGrid.slots);
                                     newSlots.set(key, { ...slot, state: 'occupied', item: nextCrane.carrying });
                                     nextGrid = { ...nextGrid, slots: newSlots };
@@ -194,11 +384,16 @@ export const useGameStore = create<GameStore>((set, get) => ({
                                     nextCrane.state = 'IDLE';
                                     nextCrane.mission = null;
                                 } else {
-                                    // Failed to drop? (Slot taken?)
-                                    // Re-evaluate
+                                    // Slot taken? Find another slot
+                                    logger.warn('FSM', 'STORE: Target slot not empty, re-evaluating');
                                     nextCrane.state = 'IDLE';
                                     nextCrane.mission = null;
                                 }
+                            } else {
+                                // Unexpected state - at IO with item, or elsewhere
+                                logger.warn('FSM', 'STORE: Unexpected state', { atIO, atTarget, carrying: !!nextCrane.carrying });
+                                nextCrane.state = 'IDLE';
+                                nextCrane.mission = null;
                             }
                         } else if (nextCrane.mission?.type === 'RETRIEVE') {
                             // We are either at Slot (Pickup) or at IO (Drop)
@@ -315,6 +510,7 @@ export const useGameStore = create<GameStore>((set, get) => ({
         set({
             shiftTime: newShiftTime,
             realTime: newRealTime,
+            lastOrderTime: newLastOrderTime,
             crane: nextCrane,
             orders: nextOrdersState,
             grid: nextGrid,
@@ -340,8 +536,8 @@ export const useGameStore = create<GameStore>((set, get) => ({
     },
 
     pickupFromIO: () => { console.warn('Manual pickup deprecated in FSM'); },
-    storeAt: (x, y) => { console.warn('Manual store deprecated in FSM'); },
-    retrieveFrom: (x, y) => { console.warn('Manual retrieve deprecated in FSM'); },
+    storeAt: (_x, _y) => { console.warn('Manual store deprecated in FSM'); },
+    retrieveFrom: (_x, _y) => { console.warn('Manual retrieve deprecated in FSM'); },
     deliverToIO: () => { console.warn('Manual deliver deprecated in FSM'); },
 
     addOrder: (order) =>
@@ -451,6 +647,8 @@ export const useGameStore = create<GameStore>((set, get) => ({
     resetGame: () =>
         set({
             levelId: null,
+            currentLevel: null,
+            shiftDuration: 0,
             shiftTime: 0,
             realTime: 0,
             isPaused: true,

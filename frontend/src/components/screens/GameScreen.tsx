@@ -3,18 +3,16 @@ import { Grid } from '../game/Grid';
 import { ZoneEditor } from '../editor/ZoneEditor';
 import { useGameStore } from '../../store/gameStore';
 import { useUIStore } from '../../store/uiStore';
+import { useProgressStore } from '../../store/progressStore';
 import { useGameLoop } from '../../hooks/useGameLoop';
 import { COLORS, ITEM_COLORS } from '../../constants/colors';
+import { MAX_FAILED_ORDERS } from '../../constants/config';
 
 export function GameScreen() {
-    const initializeGrid = useGameStore((state) => state.initializeGrid);
-    const moveCraneTo = useGameStore((state) => state.moveCraneTo);
-    const pickupFromIO = useGameStore((state) => state.pickupFromIO);
-    const storeAt = useGameStore((state) => state.storeAt);
-    const retrieveFrom = useGameStore((state) => state.retrieveFrom);
-    const deliverToIO = useGameStore((state) => state.deliverToIO);
-    const generateOrder = useGameStore((state) => state.generateOrder);
+    const resetGame = useGameStore((state) => state.resetGame);
+    const getShiftResult = useGameStore((state) => state.getShiftResult);
     const setPaused = useGameStore((state) => state.setPaused);
+    const completeLevel = useProgressStore((state) => state.completeLevel);
 
     const grid = useGameStore((state) => state.grid);
     const crane = useGameStore((state) => state.crane);
@@ -22,51 +20,46 @@ export function GameScreen() {
     const stats = useGameStore((state) => state.stats);
     const isPaused = useGameStore((state) => state.isPaused);
     const realTime = useGameStore((state) => state.realTime);
+    const shiftTime = useGameStore((state) => state.shiftTime);
+    const currentLevel = useGameStore((state) => state.currentLevel);
 
     const setScreen = useUIStore((state) => state.setScreen);
     const [showZoneEditor, setShowZoneEditor] = useState(false);
+    const [shiftEnded, setShiftEnded] = useState(false);
 
     // Start game loop
     useGameLoop();
 
-    // Initialize a test grid on mount
+    // Detect end of shift
     useEffect(() => {
-        initializeGrid(8, 8, { x: 0, y: 7 });
-        // Start paused? Store default is paused.
-    }, [initializeGrid]);
+        if (shiftEnded) return;
 
-    const handleSlotClick = (x: number, y: number) => {
-        if (!crane || !grid) {
-            console.warn('GameScreen: Missing crane or grid state');
+        const isLose = stats.ordersFailed >= MAX_FAILED_ORDERS;
+        const isWin = shiftTime <= 0 && realTime > 0;
+
+        if (isWin || isLose) {
+            setShiftEnded(true);
+            setPaused(true);
+
+            const result = getShiftResult();
+            if (result) {
+                completeLevel(result);
+                // Small delay before navigating to show the final state
+                setTimeout(() => {
+                    setScreen('shift_summary');
+                }, 500);
+            }
+        }
+    }, [shiftTime, stats.ordersFailed, shiftEnded, getShiftResult, completeLevel, setScreen, setPaused, realTime]);
+
+    const handleSlotClick = (_x: number, _y: number) => {
+        if (!crane || !grid || shiftEnded) {
             return;
         }
 
         // Auto-resume if paused
         if (isPaused) {
             setPaused(false);
-        }
-
-        // If not at target, move there
-        if (crane.x !== x || crane.y !== y) {
-            moveCraneTo(x, y);
-            return;
-        }
-
-        // If at target, perform action
-        const isIOPort = x === grid.ioPort.x && y === grid.ioPort.y;
-
-        if (isIOPort) {
-            if (crane.carrying) {
-                deliverToIO();
-            } else {
-                pickupFromIO();
-            }
-        } else {
-            if (crane.carrying) {
-                storeAt(x, y);
-            } else {
-                retrieveFrom(x, y);
-            }
         }
     };
 
@@ -76,16 +69,24 @@ export function GameScreen() {
             <div className="flex items-center justify-between w-full max-w-4xl mb-6">
                 <button
                     className="px-4 py-2 rounded-lg text-slate-400 hover:text-white transition-colors"
-                    onClick={() => setScreen('main_menu')}
+                    onClick={() => {
+                        resetGame();
+                        setScreen('level_select');
+                    }}
                 >
                     ← Back
                 </button>
-                <h1
-                    className="text-2xl font-bold"
-                    style={{ color: COLORS.crane }}
-                >
-                    THROUGHPUT
-                </h1>
+                <div className="text-center">
+                    <h1
+                        className="text-2xl font-bold"
+                        style={{ color: COLORS.crane }}
+                    >
+                        {currentLevel ? currentLevel.name : 'THROUGHPUT'}
+                    </h1>
+                    <div className="text-sm text-slate-400 font-mono">
+                        Time: {Math.floor(shiftTime / 60)}:{String(Math.floor(shiftTime % 60)).padStart(2, '0')}
+                    </div>
+                </div>
                 <div className="flex gap-4">
                     <button
                         className="px-4 py-2 rounded bg-slate-700 hover:bg-slate-600 text-white"
@@ -99,15 +100,6 @@ export function GameScreen() {
                         onClick={() => setShowZoneEditor(!showZoneEditor)}
                     >
                         Zones
-                    </button>
-                    <button
-                        className="px-4 py-2 rounded bg-slate-700 hover:bg-slate-600 text-white"
-                        onClick={() => {
-                            if (isPaused) setPaused(false);
-                            generateOrder();
-                        }}
-                    >
-                        + Order
                     </button>
                 </div>
             </div>

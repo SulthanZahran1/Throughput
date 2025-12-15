@@ -2,6 +2,7 @@
 export const COLORS = {
     // Backgrounds
     bgPrimary: '#0f172a',
+    bgSecondary: '#1e293b',
     bgSlot: '#1e293b',
     gridLines: '#334155',
 

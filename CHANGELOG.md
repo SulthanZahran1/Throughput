@@ -12,6 +12,28 @@ All notable changes to this project will be documented in this file.
  - **Server**: Basic HTTP server setup on port 8080.
  
  ---
+
+## [Phase 3] - 2025-12-12
+
+### Added
+- **Level Definition System**: `types/level.ts` with LevelDefinition, OrderWave, StarThreshold, UserProgress, and ShiftResult types.
+- **10 Campaign Levels**: Act 1 (tutorial, L1-5) and Act 2 (automation, L6-10) in `data/levels/`.
+- **Progress Store**: `store/progressStore.ts` with localStorage persistence.
+- **Level Select Screen**: Grid-based level selection with star display and unlock logic.
+- **Shift Summary Screen**: Post-shift results with stats, stars, and navigation.
+- **loadLevel Action**: `gameStore` can now initialize from level definitions.
+- **getShiftResult Action**: Calculates win/lose, JPH, and star ratings.
+- **Auto Order Generation**: Orders spawn automatically based on level's `orderSchedule`.
+- **End-of-Shift Detection**: Game detects win/lose and navigates to summary screen.
+
+### Changed
+- Updated `App.tsx` with level select and shift summary routing.
+- Main menu now routes to level select instead of directly to game.
+- GameScreen shows shift timer countdown and level name.
+- Removed manual "+ Order" button (orders are now automatic).
+- Added `bgSecondary` color to color constants.
+
+---
  
  ## [Phase 2] - 2025-12-12
 

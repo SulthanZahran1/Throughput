@@ -1,12 +1,42 @@
 import { useUIStore } from './store/uiStore';
+import { useGameStore } from './store/gameStore';
 import { GameScreen } from './components/screens/GameScreen';
+import { LevelSelectScreen } from './components/screens/LevelSelectScreen';
+import { ShiftSummaryScreen } from './components/screens/ShiftSummaryScreen';
 import { COLORS } from './constants/colors';
+import { getLevelById } from './data/levels';
 
 function MainMenu() {
   const setScreen = useUIStore((state) => state.setScreen);
+  const loadLevel = useGameStore((state) => state.loadLevel);
+
+  const handleStartGame = () => {
+    // Go to level select for progression
+    setScreen('level_select');
+  };
+
+  const handleSandbox = () => {
+    // Load a sandbox-like config (16x16, all features)
+    const sandboxLevel = getLevelById('1'); // Use level 1 as base for sandbox
+    if (sandboxLevel) {
+      loadLevel({
+        ...sandboxLevel,
+        id: 'sandbox',
+        name: 'Sandbox',
+        gridWidth: 16,
+        gridHeight: 16,
+        shiftDuration: 600, // 10 minutes
+        unlockedFeatures: ['zones', 'dual_command', 'retrieval_modes'],
+      });
+    }
+    setScreen('sandbox');
+  };
 
   return (
-    <div className="min-h-screen flex flex-col items-center justify-center p-8">
+    <div
+      className="min-h-screen flex flex-col items-center justify-center p-8"
+      style={{ backgroundColor: COLORS.bgPrimary }}
+    >
       {/* Header */}
       <h1
         className="text-5xl font-bold mb-2 tracking-tight"
@@ -26,7 +56,7 @@ function MainMenu() {
             backgroundColor: COLORS.crane,
             color: COLORS.bgPrimary,
           }}
-          onClick={() => setScreen('game')}
+          onClick={handleStartGame}
         >
           Start Game
         </button>
@@ -37,7 +67,7 @@ function MainMenu() {
             borderColor: COLORS.crane,
             color: COLORS.crane,
           }}
-          onClick={() => setScreen('sandbox')}
+          onClick={handleSandbox}
         >
           Sandbox Mode
         </button>
@@ -49,7 +79,7 @@ function MainMenu() {
 
       {/* Version */}
       <p className="absolute bottom-4 text-slate-600 text-sm font-mono">
-        v1.0 — Phase 0
+        v1.0 — Phase 3
       </p>
     </div>
   );
@@ -57,8 +87,16 @@ function MainMenu() {
 
 function App() {
   const currentScreen = useUIStore((state) => state.currentScreen);
+  const shiftResult = useGameStore((state) => state.getShiftResult?.());
 
   switch (currentScreen) {
+    case 'level_select':
+      return <LevelSelectScreen />;
+    case 'shift_summary':
+      if (shiftResult) {
+        return <ShiftSummaryScreen result={shiftResult} />;
+      }
+      return <LevelSelectScreen />;
     case 'game':
     case 'sandbox':
       return <GameScreen />;
@@ -68,3 +106,4 @@ function App() {
 }
 
 export default App;
+
