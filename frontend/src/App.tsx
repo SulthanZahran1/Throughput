@@ -1,4 +1,5 @@
 
+import { useState, useEffect } from 'react';
 import { Grid } from './components/game/Grid';
 import { Player } from './components/game/Player';
 import { Item } from './components/game/Item';
@@ -9,6 +10,7 @@ import { VictoryScreen } from './components/screens/VictoryScreen';
 import { useGameStore } from './store/gameStore';
 import { useGameLoop } from './hooks/useGameLoop';
 import { useKeyboard } from './hooks/useKeyboard';
+import { useSwipe } from './hooks/useSwipe';
 import { TARGET_RUN_TIME } from './constants/config';
 
 // Format milliseconds to MM:SS
@@ -17,6 +19,11 @@ const formatTime = (ms: number): string => {
   const minutes = Math.floor(totalSeconds / 60);
   const seconds = totalSeconds % 60;
   return `${minutes}:${seconds.toString().padStart(2, '0')}`;
+};
+
+// Check if device is mobile (touch device with small screen)
+const isMobileDevice = () => {
+  return 'ontouchstart' in window && window.innerWidth < 1024;
 };
 
 function App() {
@@ -30,19 +37,55 @@ function App() {
   const upgrades = useGameStore(state => state.upgrades);
   const restart = useGameStore(state => state.restart);
 
+  const [showOrientationPrompt, setShowOrientationPrompt] = useState(false);
+
+  // Detect orientation changes on mobile
+  useEffect(() => {
+    const checkOrientation = () => {
+      const isPortrait = window.innerHeight > window.innerWidth;
+      setShowOrientationPrompt(isMobileDevice() && isPortrait);
+    };
+
+    checkOrientation();
+    window.addEventListener('resize', checkOrientation);
+    window.addEventListener('orientationchange', checkOrientation);
+
+    return () => {
+      window.removeEventListener('resize', checkOrientation);
+      window.removeEventListener('orientationchange', checkOrientation);
+    };
+  }, []);
+
   // Pause game when won or game over
   useGameLoop(!isGameOver && !hasWon);
   useKeyboard();
+  useSwipe();
 
   return (
     <div className="min-h-screen bg-gray-950 text-white flex items-center justify-center p-2 sm:p-4 md:p-8">
+      {/* Landscape Orientation Prompt for Mobile */}
+      {showOrientationPrompt && (
+        <div className="fixed inset-0 bg-gray-950/95 z-[100] flex flex-col items-center justify-center p-8 text-center">
+          <div className="text-6xl mb-6 animate-bounce">📱</div>
+          <h2 className="text-2xl font-bold text-amber-400 mb-4">Rotate Your Device</h2>
+          <p className="text-gray-300 mb-6 max-w-xs">
+            For the best gameplay experience, please rotate your device to landscape mode.
+          </p>
+          <div className="text-4xl animate-pulse">↻</div>
+          <button
+            onClick={() => setShowOrientationPrompt(false)}
+            className="mt-8 px-4 py-2 text-sm text-gray-400 underline"
+          >
+            Continue in portrait anyway
+          </button>
+        </div>
+      )}
+
       {/* Stacked layout on mobile, side-by-side on desktop */}
       <div className="flex flex-col md:flex-row gap-2 sm:gap-4 md:gap-8 items-center">
         <div className="relative">
-          <Grid />
-
-          {/* Game Entities Layer */}
-          <div className="absolute top-0 left-0 w-full h-full pointer-events-none">
+          <Grid>
+            {/* Game Entities rendered inside Grid using CSS Grid positioning */}
             <Player />
             {items.map(item => (
               <Item key={item.id} item={item} />
@@ -50,7 +93,7 @@ function App() {
             {robots.map(robot => (
               <Robot key={robot.id} robot={robot} />
             ))}
-          </div>
+          </Grid>
 
           {/* UI Overlay - Top Left - Compact on mobile */}
           <div className="absolute top-1 left-1 sm:top-4 sm:left-4 text-white font-mono bg-black/50 p-1 sm:p-2 rounded space-y-0.5 sm:space-y-1 text-xs sm:text-sm">

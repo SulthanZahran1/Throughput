@@ -37,6 +37,7 @@ const createInitialRobot = (): Robot => ({
     target: null,
     targetOrderIds: [],
     speedMultiplier: 1.0,
+    moveProgress: 0,
 });
 
 const initialState: GameState = {
@@ -48,6 +49,7 @@ const initialState: GameState = {
         pickupRadius: 0,
         targetX: null,
         targetY: null,
+        moveProgress: 0,
     },
     grid: createInitialGrid(),
     items: [],
@@ -80,9 +82,15 @@ export const useGameStore = create<GameState & GameActions>((set) => ({
             if (state.isGameOver || state.isSelectingUpgrade) return state;
 
             // Clear tap-to-move target when using keyboard
-            const speedMultiplier = state.player.speedMultiplier;
-            const newX = Math.max(0, Math.min(GRID_SIZE - 1, state.player.x + dx * speedMultiplier));
-            const newY = Math.max(0, Math.min(GRID_SIZE - 1, state.player.y + dy * speedMultiplier));
+            // Player moves exactly 1 cell at a time (grid-aligned)
+            const newX = Math.max(0, Math.min(GRID_SIZE - 1, state.player.x + dx));
+            const newY = Math.max(0, Math.min(GRID_SIZE - 1, state.player.y + dy));
+
+            // Check for robot collision - player cannot move into a cell with a robot
+            const isBlockedByRobot = state.robots.some(robot => robot.x === newX && robot.y === newY);
+            if (isBlockedByRobot) {
+                return state; // Stay in place
+            }
 
             let newState = {
                 ...state,
@@ -100,10 +108,9 @@ export const useGameStore = create<GameState & GameActions>((set) => ({
             }
 
             // Check if player is at I/O port with an item (deliver)
-            // Using radius of 1.5 to make delivery easier
             if (newState.player.carrying &&
-                Math.abs(newState.player.x - IO_PORT.x) <= 1.5 &&
-                Math.abs(newState.player.y - IO_PORT.y) <= 1.5) {
+                newState.player.x === IO_PORT.x &&
+                newState.player.y === IO_PORT.y) {
 
                 const carriedType = newState.player.carrying.type;
                 // Find ANY matching order (player takes priority over robots)

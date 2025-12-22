@@ -29,6 +29,8 @@ export interface Robot {
     targetOrderId?: string; // Order being fulfilled
     targetOrderIds: string[]; // Multiple orders for multi-carry
     speedMultiplier: number; // Base speed modifier from upgrades
+    moveProgress: number; // Accumulated time towards next cell move (0-1)
+    path?: { x: number, y: number }[]; // Current planned path for visualization
 }
 
 export interface Player {
@@ -39,6 +41,7 @@ export interface Player {
     pickupRadius: number; // From upgrades (Longer Arms)
     targetX: number | null; // Target to walk towards (tap-to-move)
     targetY: number | null;
+    moveProgress: number; // Accumulated time towards next cell move (0-1)
 }
 
 export interface GridSlot {

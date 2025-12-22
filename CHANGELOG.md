@@ -5,6 +5,15 @@ All notable changes to this project will be documented in this file.
 ## [Unreleased]
 
 ### Added
+- **A* Pathfinding for Robots**: Robots now use A* search to navigate around obstacles and other robots.
+- **Cell Reservation System**: Robots reserve their next move, preventing head-on collisions and jittering.
+- **Robot Movement Visualization**:
+  - **Dotted Path Lines**: Faint lines show the full planned trajectory of each robot.
+  - **Pulsing Target Markers**: Highlight the current goal cell of each robot.
+  - **Color Coding**: Orange for "moving to item", Blue for "returning to port".
+- **Smarter Player Avoidance**: Tap-to-move now automatically steps around robots and stationary obstacles.
+
+### Added
 - **Mobile-Friendly Support**: Game now works on mobile devices with responsive layout and touch controls.
   - **Tap-to-Move**: Touch/click any grid cell to walk there smoothly.
   - **Responsive Grid**: Cell sizes scale based on viewport using CSS custom properties.

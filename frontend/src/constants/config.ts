@@ -6,16 +6,16 @@ export const TICK_RATE = 1000 / 60; // 60 FPS
 // ==========================================
 export let ORDER_SPAWN_RATE = 5000; // ms between orders (lower = faster spawning)
 export let ORDER_TIMEOUT = 30000;   // ms to fulfill order (lower = harder)
-export let ROBOT_SPEED = 3;         // cells per second (lower = slower)
+export let ROBOT_SPEED = 0.5;         // cells per second (lower = slower)
 // ==========================================
 
-export const PLAYER_SPEED = 10; // Grid cells per second (approx)
+export const PLAYER_SPEED = 2; // Grid cells per second (approx)
 
 export const IO_PORT = { x: 0, y: 8 }; // Middle of left wall
 
 // Phase 2: Progression
 export const XP_PER_ORDER = 25;
-export const XP_PER_LEVEL = 200; // Harder progression
+export const XP_PER_LEVEL = 100; // Harder progression
 
 // Phase 2: Robot Collision
 export const ROBOT_COLLISION_DISTANCE = 1.5; // Cells

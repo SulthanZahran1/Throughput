@@ -5,7 +5,7 @@
 
 ## 1. Core Concept
 
-**One sentence:** You start as a warehouse worker manually hauling boxes; you end commanding a chaotic fleet of robots, conveyors, and zones that obliterate orders the instant they spawn.
+**One sentence:** You start as a warehouse worker manually hauling boxes; you end commanding a chaotic fleet of mobile robots and conveyors that obliterate orders the instant they spawn.
 
 **Core fantasy:** "I built this."
 
@@ -40,9 +40,9 @@
 ### 2.3 Build Emergence
 
 Each run forces different builds based on offerings:
-- "I got conveyors early, going belt-heavy"
-- "No robots yet, manual speed build"
-- "Three zone upgrades—painting strategy"
+- "I got high-speed boots early, manual specialist."
+- "Robot-heavy build for hands-off automation."
+- "Conveyor-centric setup for passive fulfillment."
 
 ---
 
@@ -50,18 +50,13 @@ Each run forces different builds based on offerings:
 
 ### 3.1 Player Actions
 
-| Input | Effect |
-|-------|--------|
 | **WASD/Arrow** | Move around warehouse |
+| **Tap/Click** | Pathfind to target cell |
 | **Walk over item** | Pick up (if hands free) |
 | **Walk to I/O port** | Deposit item (fulfills order) |
 | **Walk over XP gem** | Collect experience |
-| **Spacebar** | Quick-paint zone (late unlock) |
 
-### 3.2 Automation Actions (Passive)
-
-Robots, conveyors, sorters act on their own based on:
-- Zone assignments
+Mobile robots and conveyors act on their own based on:
 - Proximity rules
 - Upgrade modifiers
 
@@ -89,46 +84,32 @@ You don't control them directly. You build the system; it runs.
 
 ## 4. Upgrade Categories
 
-### 4.1 Automation (Robots)
+### 4.1 Automation (Mobile Robots)
 
 | Upgrade | Effect | Tradeoff |
 |---------|--------|----------|
-| Basic Robot | Auto-fulfills orders in its zone | Slow, single-task |
-| Fast Robot | 2× speed | Draws 2× power |
-| Specialist Robot | 3× speed for one item type | Ignores others |
-| Wide Robot | Covers 2× area | 50% slower |
+| Basic Robot | Auto-fulfills nearest orders | Slow, single-task |
+| Faster Robots | +50% robot move speed | — |
+| Extra Robot | +1 robot fleet size | — |
+| Multi-Carry | Robots can carry 2 items | — |
+| Priority Orders | Robots target most urgent orders | — |
 
-### 4.2 Infrastructure (Conveyors/Sorters)
-
-| Upgrade | Effect | Tradeoff |
-|---------|--------|----------|
-| Conveyor Belt | Moves items in a line | Takes grid space |
-| Auto-Sorter | Routes items to correct zone | Requires conveyors |
-| Vertical Lift | Connects non-adjacent areas | High power cost |
-
-### 4.3 Zones
+### 4.2 Infrastructure (Conveyors)
 
 | Upgrade | Effect | Tradeoff |
 |---------|--------|----------|
-| Zone Slot | +1 paintable zone | — |
-| Zone Boost | Items in zone = +50% robot speed | Smaller zone radius |
-| Quick-Paint | Spacebar paints zone instantly | Cooldown |
+| Conveyor Belt | Items on ground drift to I/O port | Passive speed only |
+| Order Extension | +5 seconds to all order timers | — |
+| Double XP | +100% XP from orders | — |
 
-### 4.4 Player
+### 4.3 Player
 
 | Upgrade | Effect | Tradeoff |
 |---------|--------|----------|
 | Speed Boots | Move faster | — |
 | Longer Arms | Pickup radius +1 | — |
 | Magnetic | XP auto-collected nearby | — |
-| Bulk Carry | Hold 2 items | Slower movement |
-
-### 4.5 Power System (Constraint)
-
-- Total power budget: starts at 100
-- Each automation draws power
-- Over budget → everything slows down
-- Upgrades to increase budget are rare/costly
+| Order Radar | Urgent orders glow through UI | — |
 
 ---
 
@@ -138,26 +119,14 @@ You don't control them directly. You build the system; it runs.
 
 Multiple robots in same area:
 - Path around each other
-- Wait for clearance
-- 3 robots in one zone < 2 robots in separate zones
+- Slow down for clearance
+- Forces spatial thinking, not just "more robots = better"
 
-Forces spatial thinking, not just "more robots = better"
+### 5.2 Conveyor Management
 
-### 5.2 Conveyor Jams
-
-Conveyors can back up if:
-- Destination zone is full
-- Sorter routes wrong
-- Two conveyors merge badly
-
-Player can manually clear jams (walk over and grab)
-
-### 5.3 Zone Conflicts
-
-Overlapping zones with different rules:
-- Robots get confused
-- Priority conflicts cause oscillation
-- Intentional chaos for advanced strategies?
+Items drift slowly toward I/O ports. If the port is blocked:
+- Items pile up
+- Robots must clear the backlog to resume flow
 
 ---
 
@@ -183,9 +152,9 @@ Overlapping zones with different rules:
 
 - [x] 3 upgrade choices per level
 - [x] 6-8 different upgrades
-- [x] Power budget system
-- [x] Basic zone painting
 - [x] Robot collision/slowdown
+- [x] Mobile-friendly touch controls
+- [x] Responsive grid system
 
 **Test question:** Do different upgrade paths feel different?
 
@@ -199,6 +168,15 @@ Overlapping zones with different rules:
 
 **Test question:** Is the late-game power fantasy real?
 
+### 6.4 Phase 4: Polish & Intelligence (Complete)
+
+- [x] A* Pathfinding for robots
+- [x] Cell reservation (no head-on collisions)
+- [x] Robot intention visualization (dotted paths, markers)
+- [x] Smart player movement (avoiding robots)
+
+**Test question:** Does the system feel reliable and transparent?
+
 ---
 
 ## 7. What We're NOT Building (Yet)
@@ -206,9 +184,9 @@ Overlapping zones with different rules:
 - Backend / auth / persistence
 - Meta progression unlocks
 - Multiple maps
-- Sound / polish
-- Conveyors (phase 2 feature)
+- Sound / music
 - Leaderboards
+- Advanced Sorters/Lifts
 
 ---
 
@@ -229,9 +207,8 @@ The prototype works if:
 | Question | Answer |
 |----------|--------|
 | View | Top-down |
-| Power budget visibility | Prominent UI element (bar or number) |
-| Player death by robot | No — robots pass through player |
-| Item variety | Colors only (red, blue, green) |
+| Mobile Friendly | Yes (Tap-to-move + Responsive) |
+| Items | Colors only (red, blue, green) |
 
 ---
 

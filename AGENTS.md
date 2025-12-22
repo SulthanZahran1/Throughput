@@ -55,12 +55,12 @@ See `docs/prototype-plan.md` for scope, upgrades, and success criteria.
 
 | Entity | Description |
 |--------|-------------|
-| **Player** | WASD movement, picks up items, collects XP |
+| **Player** | WASD or Tap-to-move, picks up items, collects XP |
 | **Item** | Colored box (red/blue/green), spawns at I/O port |
 | **Order** | Request for item type, has timer, fails if expired |
-| **Robot** | Auto-fulfills orders in its zone, unlocked via upgrades |
-| **Zone** | Painted region, affects robot behavior |
+| **Robot** | Auto-fulfills nearest orders, unlocked via upgrades |
 | **XP Gem** | Dropped on order complete, walk over to collect |
+| **Conveyor** | Items on ground drift toward I/O ports |
 
 ---
 
@@ -80,15 +80,11 @@ interface GameState {
   
   // Automation
   robots: Robot[];
-  zones: Zone[];
   
   // Progression (within run)
   xp: number;
   level: number;
   upgrades: Upgrade[];
-  
-  // Resources
-  power: { current: number; max: number; }
   
   // Run state
   runTime: number;
@@ -110,9 +106,10 @@ frontend/src/
 ├── engine/          # Pure game logic
 │   ├── player.ts    # Movement, pickup, deliver
 │   ├── orders.ts    # Spawn, timers, fail
-│   ├── robots.ts    # Auto-fulfill logic
+│   ├── robots.ts    # Auto-fulfill logic, A* search usage
+│   ├── astar.ts     # A* grid pathfinding utility
 │   ├── upgrades.ts  # Upgrade pool, effects
-│   ├── collision.ts # Robot pathing conflicts
+│   ├── collision.ts # Robot slowing logic
 │   └── simulation.ts# Main game tick
 ├── store/
 │   └── gameStore.ts # Single Zustand store
@@ -148,8 +145,7 @@ frontend/src/
 function tick(delta: number) {
   updatePlayer(delta);
   updateOrders(delta);
-  updateRobots(delta);
-  checkCollisions();
+  updateRobots(delta); // Handles A* pathing and cell reservations
   checkLevelUp();
   checkGameOver();
 }
@@ -174,9 +170,8 @@ function tick(delta: number) {
 ### Phase 2: Build Variety (Complete)
 - [x] 3 upgrade choices per level
 - [x] 6-8 upgrades
-- [x] Power budget
-- [x] Zone painting
 - [x] Robot collision
+- [x] Mobile support (Tap-to-move)
 
 **Test:** Do different builds feel different?
 
@@ -195,8 +190,8 @@ function tick(delta: number) {
 | Decision | Choice |
 |----------|--------|
 | View | Top-down |
-| Power budget UI | Prominent bar |
-| Player-robot collision | No (robots pass through) |
+| Mobile controls | Tap-to-Move + WASD |
+| Player-robot collision | Yes (player blocked by robots) |
 | Item types | Colors only (red, blue, green) |
 
 ---

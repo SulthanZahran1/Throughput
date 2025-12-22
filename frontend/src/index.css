@@ -38,10 +38,36 @@
   }
 }
 
+html,
+body {
+  touch-action: manipulation;
+  -webkit-touch-callout: none;
+  -webkit-user-select: none;
+  user-select: none;
+}
+
 body {
   margin: 0;
   display: flex;
   place-items: center;
   min-width: 320px;
   min-height: 100vh;
+}
+
+/* Landscape mode on mobile - optimize for horizontal layout */
+@media (max-width: 1024px) and (orientation: landscape) {
+  :root {
+    --cell-size: min(4.5vh, 32px);
+    --grid-gap: 2px;
+    --grid-padding: 4px;
+  }
+}
+
+/* Extra small screens in landscape */
+@media (max-height: 480px) and (orientation: landscape) {
+  :root {
+    --cell-size: min(5vh, 28px);
+    --grid-gap: 1px;
+    --grid-padding: 2px;
+  }
 }

@@ -1,4 +1,4 @@
-import type { GameState, Player } from '../types/game';
+import type { GameState, Player, Robot } from '../types/game';
 import { updateOrders, spawnOrderWithItem } from './orders';
 import { updateRobots } from './robots';
 import {
@@ -6,11 +6,12 @@ import {
     XP_PER_LEVEL,
     TARGET_RUN_TIME,
     IO_PORT,
-    PLAYER_SPEED,
     getOrderSpawnRate,
+    GRID_SIZE,
+    PLAYER_SPEED,
 } from '../constants/config';
 import { getRandomUpgrades, getOrderTimeExtension, getConveyorSpeed, getXpMultiplier } from './upgrades';
-import { tryPickupItem } from './player';
+import { tryPickupItem, findSmarterMove } from './player';
 
 /**
  * Check if player should level up and trigger upgrade selection
@@ -35,9 +36,18 @@ const checkLevelUp = (state: GameState): GameState => {
 };
 
 /**
- * Move player toward target position (tap-to-move)
+ * Move player toward target position (tap-to-move) - grid-aligned
+ * Player moves one cell at a time, rate-limited by PLAYER_SPEED
  */
-const updatePlayerMovement = (player: Player, delta: number, items: GameState['items'], grid: GameState['grid'], orders: GameState['orders'], upgrades: GameState['upgrades']): { player: Player; items: GameState['items']; orders: GameState['orders']; xpGain: number; ordersCompleted: number } => {
+const updatePlayerMovement = (
+    player: Player,
+    delta: number,
+    items: GameState['items'],
+    grid: GameState['grid'],
+    orders: GameState['orders'],
+    upgrades: GameState['upgrades'],
+    robots: Robot[]
+): { player: Player; items: GameState['items']; orders: GameState['orders']; xpGain: number; ordersCompleted: number } => {
     if (player.targetX === null || player.targetY === null) {
         return { player, items, orders, xpGain: 0, ordersCompleted: 0 };
     }
@@ -46,9 +56,9 @@ const updatePlayerMovement = (player: Player, delta: number, items: GameState['i
     const dy = player.targetY - player.y;
 
     // Check if we've reached the target
-    if (Math.abs(dx) < 0.1 && Math.abs(dy) < 0.1) {
+    if (dx === 0 && dy === 0) {
         return {
-            player: { ...player, x: player.targetX, y: player.targetY, targetX: null, targetY: null },
+            player: { ...player, targetX: null, targetY: null, moveProgress: 0 },
             items,
             orders,
             xpGain: 0,
@@ -56,21 +66,53 @@ const updatePlayerMovement = (player: Player, delta: number, items: GameState['i
         };
     }
 
-    const speed = PLAYER_SPEED * player.speedMultiplier * (delta / 1000);
-    let newX = player.x;
-    let newY = player.y;
+    // Calculate how much progress we make this tick
+    // PLAYER_SPEED is in cells per second
+    const effectiveSpeed = PLAYER_SPEED * player.speedMultiplier;
+    const progressThisTick = effectiveSpeed * (delta / 1000);
+    const newProgress = player.moveProgress + progressThisTick;
 
-    // Move toward target (move in both directions smoothly)
-    if (Math.abs(dx) > 0.01) {
-        const moveX = Math.min(speed, Math.abs(dx));
-        newX = player.x + (dx > 0 ? moveX : -moveX);
-    }
-    if (Math.abs(dy) > 0.01) {
-        const moveY = Math.min(speed, Math.abs(dy));
-        newY = player.y + (dy > 0 ? moveY : -moveY);
+    // If we haven't accumulated enough progress to move a cell, wait
+    if (newProgress < 1) {
+        return {
+            player: { ...player, moveProgress: newProgress },
+            items,
+            orders,
+            xpGain: 0,
+            ordersCompleted: 0
+        };
     }
 
-    let updatedPlayer = { ...player, x: newX, y: newY };
+    // We can move! Calculate new position
+    const remainingProgress = newProgress - 1;
+
+    const { x: newX, y: newY } = findSmarterMove(
+        { x: player.x, y: player.y },
+        { x: player.targetX, y: player.targetY },
+        robots
+    );
+
+    // If we couldn't move at all (blocked in all directions)
+    if (newX === player.x && newY === player.y) {
+        return {
+            player: { ...player, moveProgress: 0.5 },
+            items,
+            orders,
+            xpGain: 0,
+            ordersCompleted: 0
+        };
+    }
+
+    // Clear target if we've arrived
+    const arrivedAtTarget = newX === player.targetX && newY === player.targetY;
+    let updatedPlayer = {
+        ...player,
+        x: newX,
+        y: newY,
+        targetX: arrivedAtTarget ? null : player.targetX,
+        targetY: arrivedAtTarget ? null : player.targetY,
+        moveProgress: arrivedAtTarget ? 0 : remainingProgress,
+    };
     let updatedItems = items;
     let updatedOrders = orders;
     let xpGain = 0;
@@ -85,15 +127,15 @@ const updatePlayerMovement = (player: Player, delta: number, items: GameState['i
 
     // Check if player is at I/O port with an item (deliver)
     if (updatedPlayer.carrying &&
-        Math.abs(updatedPlayer.x - IO_PORT.x) <= 1.5 &&
-        Math.abs(updatedPlayer.y - IO_PORT.y) <= 1.5) {
+        updatedPlayer.x === IO_PORT.x &&
+        updatedPlayer.y === IO_PORT.y) {
 
         const carriedType = updatedPlayer.carrying.type;
         const matchingOrder = updatedOrders.find(o => o.type === carriedType);
 
         if (matchingOrder) {
             const xpMultiplier = getXpMultiplier(upgrades);
-            xpGain = Math.floor(25 * xpMultiplier); // XP_PER_ORDER
+            xpGain = Math.floor(XP_PER_ORDER * xpMultiplier);
             updatedPlayer = { ...updatedPlayer, carrying: null };
             updatedOrders = updatedOrders.filter(o => o.id !== matchingOrder.id);
             ordersCompletedCount = 1;
@@ -157,14 +199,15 @@ export const tickGame = (state: GameState, delta: number): GameState => {
         }));
     }
 
-    // Update Player (tap-to-move smooth movement)
+    // Update Player (tap-to-move grid-aligned movement)
     const playerResult = updatePlayerMovement(
         newState.player,
         delta,
         newState.items,
         newState.grid,
         newState.orders,
-        newState.upgrades
+        newState.upgrades,
+        newState.robots
     );
     newState.player = playerResult.player;
     newState.items = playerResult.items;
@@ -172,14 +215,15 @@ export const tickGame = (state: GameState, delta: number): GameState => {
     newState.xp += playerResult.xpGain;
     newState.ordersCompleted += playerResult.ordersCompleted;
 
-    // Update Robots (no power slowdown anymore)
+    // Update Robots (with collision detection against player and other robots)
     const robotResult = updateRobots(
         newState.robots,
         newState.grid,
         newState.orders,
         newState.items,
         delta,
-        state.upgrades
+        state.upgrades,
+        newState.player
     );
 
     newState.robots = robotResult.robots;

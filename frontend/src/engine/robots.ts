@@ -1,7 +1,20 @@
-import type { Robot, GridSlot, Item, Order, RobotState, UpgradeId } from '../types/game';
-import { ROBOT_SPEED, IO_PORT } from '../constants/config';
+import type { Robot, GridSlot, Item, Order, RobotState, UpgradeId, Player } from '../types/game';
+import { IO_PORT, ROBOT_SPEED, GRID_SIZE } from '../constants/config';
 import { getRobotCollisionSlowdown } from './collision';
 import { getRobotSpeedMultiplier, hasPriorityOrders, hasMultiCarry } from './upgrades';
+import { findPath } from './astar';
+
+/**
+ * Build a set of occupied cells from robot and player positions
+ */
+export const buildOccupiedCells = (robots: Robot[], player: Player): Set<string> => {
+    const occupied = new Set<string>();
+    for (const robot of robots) {
+        occupied.add(`${robot.x},${robot.y}`);
+    }
+    occupied.add(`${player.x},${player.y}`);
+    return occupied;
+};
 
 /**
  * Find an item on the grid that matches an order type
@@ -41,40 +54,56 @@ const findAvailableOrder = (
 };
 
 /**
- * Move robot towards target position (grid-aligned, moves in cardinal directions only)
- * Returns new position and whether target is reached
+ * Move robot along its current A* path
  */
-const moveTowards = (
+const moveAlongPath = (
     robot: Robot,
-    targetX: number,
-    targetY: number,
     delta: number,
-    speedMultiplier: number
-): { x: number; y: number; reached: boolean } => {
-    const dx = targetX - robot.x;
-    const dy = targetY - robot.y;
-
-    // Check if we've reached the target
-    if (Math.abs(dx) < 0.1 && Math.abs(dy) < 0.1) {
-        return { x: targetX, y: targetY, reached: true };
+    speedMultiplier: number,
+    occupiedCells: Set<string>
+): { x: number; y: number; reached: boolean; moveProgress: number; newPath: { x: number, y: number }[] } => {
+    if (!robot.path || robot.path.length === 0) {
+        return { x: robot.x, y: robot.y, reached: true, moveProgress: 0, newPath: [] };
     }
 
-    const speed = ROBOT_SPEED * speedMultiplier * (delta / 1000);
-    let newX = robot.x;
-    let newY = robot.y;
+    // Current target is the first point in the path (if it's not our current position)
+    let nextPoint = robot.path[0];
+    let currentPath = [...robot.path];
 
-    // Move in one direction at a time (horizontal first, then vertical)
-    if (Math.abs(dx) > 0.1) {
-        // Move horizontally
-        const moveX = Math.min(speed, Math.abs(dx));
-        newX = robot.x + (dx > 0 ? moveX : -moveX);
-    } else if (Math.abs(dy) > 0.1) {
-        // Move vertically
-        const moveY = Math.min(speed, Math.abs(dy));
-        newY = robot.y + (dy > 0 ? moveY : -moveY);
+    // If we're already at the next point, skip it
+    if (nextPoint.x === robot.x && nextPoint.y === robot.y) {
+        currentPath.shift();
+        if (currentPath.length === 0) {
+            return { x: robot.x, y: robot.y, reached: true, moveProgress: 0, newPath: [] };
+        }
+        nextPoint = currentPath[0];
     }
 
-    return { x: newX, y: newY, reached: false };
+    // Calculate how much progress we make this tick
+    const effectiveSpeed = ROBOT_SPEED * speedMultiplier;
+    const progressThisTick = effectiveSpeed * (delta / 1000);
+    const newProgress = robot.moveProgress + progressThisTick;
+
+    // If we haven't accumulated enough progress to move a cell, wait
+    if (newProgress < 1) {
+        return { x: robot.x, y: robot.y, reached: false, moveProgress: newProgress, newPath: currentPath };
+    }
+
+    // Check if next cell is occupied
+    const cellKey = `${nextPoint.x},${nextPoint.y}`;
+    if (occupiedCells.has(cellKey)) {
+        // Path blocked! Wait and try to nudge neighbor if waiting too long (simplified: just wait)
+        return { x: robot.x, y: robot.y, reached: false, moveProgress: 0.8, newPath: currentPath }; // Reset progress slightly to retry
+    }
+
+    // Move is successful!
+    return {
+        x: nextPoint.x,
+        y: nextPoint.y,
+        reached: currentPath.length === 1,
+        moveProgress: newProgress - 1,
+        newPath: currentPath.slice(1)
+    };
 };
 
 /**
@@ -88,7 +117,8 @@ const updateRobotState = (
     collisionSlowdown: number,
     upgradeSpeedMultiplier: number,
     priorityOrdersActive: boolean,
-    multiCarryActive: boolean
+    multiCarryActive: boolean,
+    occupiedCells: Set<string>
 ): { robot: Robot; items: Item[]; orders: Order[]; completedOrders: Order[] } => {
     const totalSpeedMultiplier = robot.speedMultiplier * collisionSlowdown * upgradeSpeedMultiplier;
     let updatedRobot = { ...robot };
@@ -113,6 +143,7 @@ const updateRobotState = (
                         target: { x: item.x, y: item.y },
                         targetOrderId: order.id,
                         targetOrderIds: [order.id],
+                        path: [{ x: robot.x, y: robot.y }, { x: item.x, y: item.y }],
                     };
                 }
             }
@@ -121,30 +152,42 @@ const updateRobotState = (
 
         case 'moving_to_item': {
             if (!robot.target) {
-                updatedRobot = { ...robot, state: 'idle' as RobotState, target: null };
+                updatedRobot = { ...robot, state: 'idle' as RobotState, target: null, moveProgress: 0 };
                 break;
             }
 
-            const { x, y, reached } = moveTowards(
-                robot,
-                robot.target.x,
-                robot.target.y,
+            // Pathfinding: If we don't have a path or it's empty, find one
+            if (!robot.path || robot.path.length === 0) {
+                const path = findPath({ x: robot.x, y: robot.y }, robot.target, occupiedCells);
+                if (path) {
+                    updatedRobot.path = path;
+                } else {
+                    // Try again next tick
+                    break;
+                }
+            }
+
+            const { x, y, reached, moveProgress, newPath } = moveAlongPath(
+                updatedRobot,
                 delta,
-                totalSpeedMultiplier
+                totalSpeedMultiplier,
+                occupiedCells
             );
 
-            updatedRobot = { ...robot, x, y };
+            updatedRobot = { ...updatedRobot, x, y, moveProgress, path: newPath };
 
             if (reached) {
                 updatedRobot.state = 'picking';
+                updatedRobot.moveProgress = 0;
+                updatedRobot.path = [];
             }
             break;
         }
 
         case 'picking': {
-            // Pick up item at current location
+            // Pick up item at current location (exact grid position)
             const itemIndex = items.findIndex(
-                item => Math.abs(item.x - robot.x) < 0.5 && Math.abs(item.y - robot.y) < 0.5
+                item => item.x === robot.x && item.y === robot.y
             );
 
             if (itemIndex !== -1) {
@@ -188,6 +231,7 @@ const updateRobotState = (
                     carryingItems: newCarryingItems,
                     state: 'moving_to_port' as RobotState,
                     target: { x: IO_PORT.x, y: IO_PORT.y },
+                    path: [{ x: updatedRobot.x, y: updatedRobot.y }, { x: IO_PORT.x, y: IO_PORT.y }],
                 };
             } else {
                 // Item was taken, go back to idle
@@ -204,22 +248,34 @@ const updateRobotState = (
 
         case 'moving_to_port': {
             if (!robot.target) {
-                updatedRobot = { ...robot, state: 'idle' as RobotState, target: null };
+                updatedRobot = { ...robot, state: 'idle' as RobotState, target: null, moveProgress: 0 };
                 break;
             }
 
-            const { x, y, reached } = moveTowards(
-                robot,
-                robot.target.x,
-                robot.target.y,
+            // Pathfinding: If we don't have a path or it's empty, find one
+            if (!robot.path || robot.path.length === 0) {
+                const path = findPath({ x: robot.x, y: robot.y }, robot.target, occupiedCells);
+                if (path) {
+                    updatedRobot.path = path;
+                } else {
+                    // Try again next tick
+                    break;
+                }
+            }
+
+            const { x, y, reached, moveProgress, newPath } = moveAlongPath(
+                updatedRobot,
                 delta,
-                totalSpeedMultiplier
+                totalSpeedMultiplier,
+                occupiedCells
             );
 
-            updatedRobot = { ...robot, x, y };
+            updatedRobot = { ...updatedRobot, x, y, moveProgress, path: newPath };
 
             if (reached) {
                 updatedRobot.state = 'dropping';
+                updatedRobot.moveProgress = 0;
+                updatedRobot.path = [];
             }
             break;
         }
@@ -261,7 +317,8 @@ export const updateRobots = (
     orders: Order[],
     items: Item[],
     delta: number,
-    upgrades: UpgradeId[]
+    upgrades: UpgradeId[],
+    player: Player
 ): { robots: Robot[]; items: Item[]; orders: Order[]; completedOrders: Order[] } => {
     const upgradeSpeedMultiplier = getRobotSpeedMultiplier(upgrades);
     const priorityOrdersActive = hasPriorityOrders(upgrades);
@@ -272,8 +329,15 @@ export const updateRobots = (
     let currentOrders = orders;
     const updatedRobots: Robot[] = [];
 
+    // Build initial occupied cells (all robots + player)
+    // As each robot moves, we update the set
+    const occupiedCells = buildOccupiedCells(robots, player);
+
     for (const robot of robots) {
         const collisionSlowdown = getRobotCollisionSlowdown(robot, robots);
+
+        // Remove current robot from occupied set (it's about to move)
+        occupiedCells.delete(`${robot.x},${robot.y}`);
 
         const result = updateRobotState(
             robot,
@@ -283,8 +347,18 @@ export const updateRobots = (
             collisionSlowdown,
             upgradeSpeedMultiplier,
             priorityOrdersActive,
-            multiCarryActive
+            multiCarryActive,
+            occupiedCells
         );
+
+        // Add robot's new position to occupied set
+        occupiedCells.add(`${result.robot.x},${result.robot.y}`);
+
+        // CELL RESERVATION: If robot is moving, reserve its next step too
+        if (result.robot.path && result.robot.path.length > 0) {
+            const nextStep = result.robot.path[0];
+            occupiedCells.add(`${nextStep.x},${nextStep.y}`);
+        }
 
         updatedRobots.push(result.robot);
         currentItems = result.items;
@@ -308,6 +382,7 @@ export const createRobot = (existingRobots: Robot[]): Robot => {
         target: null,
         targetOrderIds: [],
         speedMultiplier: 1.0,
+        moveProgress: 0,
     };
 };
 
