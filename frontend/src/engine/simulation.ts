@@ -12,10 +12,19 @@ import {
     HAZARDOUS_ITEM_RADIUS,
     HAZARDOUS_ITEM_SLOWDOWN,
     isRushHour,
+    isRushHour as isRushHourConfig, // Avoid naming conflict if any
     RUSH_HOUR_XP_MULTIPLIER,
     RUSH_HOUR_SPAWN_MULTIPLIER,
 } from '../constants/config';
-import { getRandomUpgrades, getOrderTimeExtension, getConveyorSpeed, getXpMultiplier } from './upgrades';
+import {
+    getRandomUpgrades,
+    getOrderTimeExtension,
+    getConveyorSpeed,
+    getXpMultiplier,
+    hasPowerLifter,
+    hasLeadSiding,
+    getOverloadMultiplier
+} from './upgrades';
 import { tryPickupItem } from './player';
 import { findPath } from './astar';
 import { buildOccupancySets, moveAlongPath } from './robots';
@@ -79,25 +88,27 @@ const updatePlayerMovement = (
     // PLAYER_SPEED is in cells per second
     let speedMultiplier = player.speedMultiplier;
 
-    // Heavy trait: Slowdown if carrying a red item
-    if (player.carrying?.type === 'red') {
+    // Heavy trait: Slowdown if carrying a red item (unless Power Lifter active)
+    if (player.carrying?.type === 'red' && !hasPowerLifter(upgrades)) {
         speedMultiplier *= HEAVY_ITEM_SLOWDOWN;
     }
 
-    // Hazardous trait: Slowdown if near a green item (on ground or carried by robot)
-    const isNearHazard = items.some(i =>
-        i.type === 'green' &&
-        Math.sqrt(Math.pow(i.x - player.x, 2) + Math.pow(i.y - player.y, 2)) <= HAZARDOUS_ITEM_RADIUS
-    ) || robots.some(r =>
-        r.carryingItems.some(i => i.type === 'green') &&
-        Math.sqrt(Math.pow(r.x - player.x, 2) + Math.pow(r.y - player.y, 2)) <= HAZARDOUS_ITEM_RADIUS
-    );
+    // Hazardous trait: Slowdown if near a green item (unless Lead Siding active)
+    if (!hasLeadSiding(upgrades)) {
+        const isNearHazard = items.some(i =>
+            i.type === 'green' &&
+            Math.sqrt(Math.pow(i.x - player.x, 2) + Math.pow(i.y - player.y, 2)) <= HAZARDOUS_ITEM_RADIUS
+        ) || robots.some(r =>
+            r.carryingItems.some(i => i.type === 'green') &&
+            Math.sqrt(Math.pow(r.x - player.x, 2) + Math.pow(r.y - player.y, 2)) <= HAZARDOUS_ITEM_RADIUS
+        );
 
-    if (isNearHazard) {
-        speedMultiplier *= HAZARDOUS_ITEM_SLOWDOWN;
+        if (isNearHazard) {
+            speedMultiplier *= HAZARDOUS_ITEM_SLOWDOWN;
+        }
     }
 
-    const effectiveSpeed = PLAYER_SPEED * speedMultiplier;
+    const effectiveSpeed = PLAYER_SPEED * speedMultiplier * getOverloadMultiplier(upgrades);
     const progressThisTick = effectiveSpeed * (delta / 1000);
     const newProgress = player.moveProgress + progressThisTick;
 
@@ -147,15 +158,16 @@ const updatePlayerMovement = (
         }
     }
 
-    const { x: newX, y: newY, reached, moveProgress, newPath } = moveAlongPath(
+    const { x: newX, y: newY, reached, moveProgress, newPath, blocked } = moveAlongPath(
         { ...player, path: currentPath },
         delta,
         effectiveSpeed,
-        robotCells // Player is blocked by robots (hard block for movement velocity)
+        robotCells
     );
 
-    // Clear target if we've arrived
-    const arrivedAtTarget = reached;
+    // Current player behavior: walk exactly to target unless an item is picked up along the way
+    let arrivedAtTarget = reached;
+
     let updatedPlayer: Player = {
         ...player,
         x: newX,
@@ -163,18 +175,26 @@ const updatePlayerMovement = (
         targetX: arrivedAtTarget ? null : player.targetX,
         targetY: arrivedAtTarget ? null : player.targetY,
         moveProgress: arrivedAtTarget ? 0 : moveProgress,
-        path: newPath,
+        path: (reached || blocked) ? [] : newPath,
     };
     let updatedItems = items;
     let updatedOrders = orders;
     let xpGain = 0;
     let ordersCompletedCount = 0;
 
-    // Try to pick up item at new location
+    // Try to pick up item at new location (uses player.pickupRadius internally)
     const pickupResult = tryPickupItem(updatedPlayer, grid, updatedItems);
     if (pickupResult) {
-        updatedPlayer = pickupResult.player;
+        updatedPlayer = {
+            ...pickupResult.player,
+            // If we successfully picked up an item, we can stop moving if the item was our near-target
+            targetX: null,
+            targetY: null,
+            path: [],
+            moveProgress: 0
+        };
         updatedItems = pickupResult.items;
+        arrivedAtTarget = true;
     }
 
     // Check if player is at I/O port with an item (deliver)

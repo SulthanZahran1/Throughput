@@ -59,7 +59,7 @@ See `docs/prototype-plan.md` for scope, upgrades, and success criteria.
 | **Item** | Colored box (red/blue/green), spawns at I/O port |
 | **Order** | Request for item type, has timer, fails if expired |
 | **Robot** | Auto-fulfills nearest orders, unlocked via upgrades |
-| **XP Gem** | Dropped on order complete, walk over to collect |
+| **XP Gem** | Generated on order completion (internal logic) |
 | **Floating XP** | Satisfying reward pops on delivery (automated & manual) |
 | **Conveyor** | Items on ground drift toward I/O ports (ghost path visuals) |
 | **Surge (Rush Hour)** | Period high-intensity events (2x spawns, 3x XP rewards) |
@@ -163,7 +163,7 @@ function tick(delta: number) {
 - [x] Item spawns at I/O port
 - [x] Orders with timers
 - [x] Manual pickup/deliver
-- [x] XP drop on complete
+- [x] XP reward on complete (Instant)
 - [x] Level up → gain 1 robot
 - [x] Robot auto-fulfills (nearest)
 - [x] Fail state (5 failed orders)
@@ -214,7 +214,7 @@ function tick(delta: number) {
 |---------|----------|
 | Player movement feels laggy | Use `requestAnimationFrame`, not `setInterval` |
 | Robots stacking on same order | Track which order is claimed |
-| XP not collecting | Check player hitbox vs gem position |
+| XP not rewarding | Check order completion logic vs XP gain |
 | Upgrades not applying | Verify upgrade is in `upgrades[]` before effect |
 
 ---

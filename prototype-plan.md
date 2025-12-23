@@ -27,8 +27,7 @@
 ### 2.2 Upgrade System
 
 **During run:**
-- XP drops from completed orders
-- Walk over XP to collect
+- XP rewarded from completed orders
 - Level up → pick 1 of 3 random upgrades
 - Upgrades compound and synergize
 
@@ -54,7 +53,6 @@ Each run forces different builds based on offerings:
 | **Tap/Click** | Pathfind to target cell |
 | **Walk over item** | Pick up (if hands free) |
 | **Walk to I/O port** | Deposit item (fulfills order) |
-| **Walk over XP gem** | Collect experience |
 
 Mobile robots and conveyors act on their own based on:
 - Proximity rules
@@ -141,7 +139,7 @@ Items drift slowly toward I/O ports. If the port is blocked:
 - [x] Item spawns at I/O port
 - [x] Orders spawn with timers
 - [x] Manual pickup/deliver
-- [x] XP drop on complete (Basic implementation)
+- [x] XP reward on complete (Instant)
 - [x] Level up → gain 1 robot (Basic implementation)
 - [x] Robot auto-fulfills (dumb, nearest) (Basic implementation)
 - [x] Fail state (5 failed orders)

@@ -8,7 +8,6 @@ import { getXpMultiplier } from '../engine/upgrades';
 
 interface GameActions {
     tick: (delta: number) => void;
-    movePlayer: (dx: number, dy: number) => void;
     setPlayerTarget: (x: number, y: number) => void;
     clearPlayerTarget: () => void;
     selectUpgrade: (upgradeId: UpgradeId) => void;
@@ -40,6 +39,7 @@ const createInitialRobot = (): Robot => ({
     speedMultiplier: 1.0,
     moveProgress: 0,
     blockedTicks: 0,
+    stunTicks: 0,
 });
 
 const initialState: GameState = {
@@ -80,69 +80,7 @@ export const useGameStore = create<GameState & GameActions>((set) => ({
         });
     },
 
-    movePlayer: (dx: number, dy: number) => {
-        set((state) => {
-            if (state.isGameOver || state.isSelectingUpgrade) return state;
-
-            // Clear tap-to-move target when using keyboard
-            // Player moves exactly 1 cell at a time (grid-aligned)
-            const newX = Math.max(0, Math.min(GRID_SIZE - 1, state.player.x + dx));
-            const newY = Math.max(0, Math.min(GRID_SIZE - 1, state.player.y + dy));
-
-            // Check for robot collision - player cannot move into a cell with a robot
-            const isBlockedByRobot = state.robots.some(robot => robot.x === newX && robot.y === newY);
-            if (isBlockedByRobot) {
-                return state; // Stay in place
-            }
-
-            let newState = {
-                ...state,
-                player: { ...state.player, x: newX, y: newY, targetX: null, targetY: null, path: [] },
-            };
-
-            const pickupResult = tryPickupItem(newState.player, newState.grid, newState.items);
-            if (pickupResult) {
-                newState = {
-                    ...newState,
-                    player: { ...pickupResult.player, targetX: null, targetY: null, path: [] },
-                    items: pickupResult.items,
-                };
-            }
-
-            // Check if player is at I/O port with an item (deliver)
-            if (newState.player.carrying &&
-                newState.player.x === IO_PORT.x &&
-                newState.player.y === IO_PORT.y) {
-
-                const carriedType = newState.player.carrying.type;
-                // Find ANY matching order (player takes priority over robots)
-                const matchingOrder = newState.orders.find(o => o.type === carriedType);
-
-                if (matchingOrder) {
-                    // Calculate XP with multiplier
-                    const xpMultiplier = getXpMultiplier(newState.upgrades);
-                    const xpGain = Math.floor(XP_PER_ORDER * xpMultiplier);
-
-                    // Unclaim from robot if needed, then complete order
-                    newState = {
-                        ...newState,
-                        player: { ...newState.player, carrying: null },
-                        orders: newState.orders.filter(o => o.id !== matchingOrder.id),
-                        xp: newState.xp + xpGain,
-                        ordersCompleted: newState.ordersCompleted + 1,
-                    };
-                } else {
-                    // No matching order, but still drop the item (it just doesn't count)
-                    newState = {
-                        ...newState,
-                        player: { ...newState.player, carrying: null },
-                    };
-                }
-            }
-
-            return newState;
-        });
-    },
+},
 
     selectUpgrade: (upgradeId: UpgradeId) => {
         set((state) => {

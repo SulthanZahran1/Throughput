@@ -73,6 +73,27 @@ export const UPGRADE_POOL: Upgrade[] = [
         icon: '📡',
         stackable: false,
     },
+    {
+        id: 'power_lifter',
+        name: 'Power Lifter',
+        description: 'Negate Heavy item slowdown',
+        icon: '🏋️',
+        stackable: false,
+    },
+    {
+        id: 'lead_siding',
+        name: 'Lead Siding',
+        description: 'Negate Hazardous slowdown',
+        icon: '🛡️',
+        stackable: false,
+    },
+    {
+        id: 'overload',
+        name: 'Overload',
+        description: '+50% speed, but delivery might reboot robot',
+        icon: '🔥',
+        stackable: true,
+    },
 ];
 
 /**
@@ -86,8 +107,12 @@ export const getRandomUpgrades = (count: number, ownedUpgrades: UpgradeId[]): Up
         upgrade => upgrade.stackable || !ownedUpgrades.includes(upgrade.id)
     );
 
-    // Shuffle and pick
-    const shuffled = [...availableUpgrades].sort(() => Math.random() - 0.5);
+    // Proper Fisher-Yates shuffle for fair RNG
+    const shuffled = [...availableUpgrades];
+    for (let i = shuffled.length - 1; i > 0; i--) {
+        const j = Math.floor(Math.random() * (i + 1));
+        [shuffled[i], shuffled[j]] = [shuffled[j], shuffled[i]];
+    }
     return shuffled.slice(0, Math.min(count, shuffled.length));
 };
 
@@ -167,4 +192,26 @@ export const getXpMultiplier = (upgrades: UpgradeId[]): number => {
  */
 export const hasOrderRadar = (upgrades: UpgradeId[]): boolean => {
     return upgrades.includes('order_radar');
+};
+
+/**
+ * Check if player/robot has power lifter
+ */
+export const hasPowerLifter = (upgrades: UpgradeId[]): boolean => {
+    return upgrades.includes('power_lifter');
+};
+
+/**
+ * Check if player/robot has lead siding
+ */
+export const hasLeadSiding = (upgrades: UpgradeId[]): boolean => {
+    return upgrades.includes('lead_siding');
+};
+
+/**
+ * Get overload speed multiplier
+ */
+export const getOverloadMultiplier = (upgrades: UpgradeId[]): number => {
+    const overloadCount = countUpgrade(upgrades, 'overload');
+    return 1 + (overloadCount * 0.5);
 };

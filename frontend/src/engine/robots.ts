@@ -1,7 +1,14 @@
 import type { Robot, GridSlot, Item, Order, RobotState, UpgradeId, Player } from '../types/game';
 import { IO_PORT, ROBOT_SPEED, HEAVY_ITEM_SLOWDOWN, HAZARDOUS_ITEM_RADIUS, HAZARDOUS_ITEM_SLOWDOWN, ROBOT_BLOCKED_THRESHOLD } from '../constants/config';
 import { getRobotCollisionSlowdown } from './collision';
-import { getRobotSpeedMultiplier, hasPriorityOrders, hasMultiCarry } from './upgrades';
+import {
+    getRobotSpeedMultiplier,
+    hasPriorityOrders,
+    hasMultiCarry,
+    hasPowerLifter,
+    hasLeadSiding,
+    getOverloadMultiplier
+} from './upgrades';
 import { findPath } from './astar';
 
 /**
@@ -146,27 +153,41 @@ const updateRobotState = (
     multiCarryActive: boolean,
     hardObstacles: Set<string>,
     softObstacles: Set<string>,
-    allRobots: Robot[]
+    allRobots: Robot[],
+    upgrades: UpgradeId[]
 ): { robot: Robot; items: Item[]; orders: Order[]; completedOrders: Order[] } => {
-    let totalSpeed = ROBOT_SPEED * robot.speedMultiplier * collisionSlowdown * upgradeSpeedMultiplier;
+    let totalSpeed = ROBOT_SPEED * robot.speedMultiplier * collisionSlowdown * upgradeSpeedMultiplier * getOverloadMultiplier(upgrades);
+    const pickupRadius = upgrades.filter(u => u === 'longer_arms').length;
 
-    // Heavy trait: Slowdown if carrying a red item
-    if (robot.carryingItems.some(i => i.type === 'red')) {
+    // Stun logic: If robot is stunned (rebooting), it can't move or act
+    if (robot.stunTicks > 0) {
+        return {
+            robot: { ...robot, stunTicks: Math.max(0, robot.stunTicks - 1) },
+            items,
+            orders,
+            completedOrders: []
+        };
+    }
+
+    // Heavy trait: Slowdown if carrying a red item (unless Power Lifter active)
+    if (robot.carryingItems.some(i => i.type === 'red') && !hasPowerLifter(upgrades)) {
         totalSpeed *= HEAVY_ITEM_SLOWDOWN;
     }
 
-    // Hazardous trait: Slowdown if near a green item (on ground or carried by another robot)
-    const isNearHazard = items.some(i =>
-        i.type === 'green' &&
-        Math.sqrt(Math.pow(i.x - robot.x, 2) + Math.pow(i.y - robot.y, 2)) <= HAZARDOUS_ITEM_RADIUS
-    ) || allRobots.some(r =>
-        r.id !== robot.id &&
-        r.carryingItems.some(i => i.type === 'green') &&
-        Math.sqrt(Math.pow(r.x - robot.x, 2) + Math.pow(r.y - robot.y, 2)) <= HAZARDOUS_ITEM_RADIUS
-    );
+    // Hazardous trait: Slowdown if near a green item (unless Lead Siding active)
+    if (!hasLeadSiding(upgrades)) {
+        const isNearHazard = items.some(i =>
+            i.type === 'green' &&
+            Math.sqrt(Math.pow(i.x - robot.x, 2) + Math.pow(i.y - robot.y, 2)) <= HAZARDOUS_ITEM_RADIUS
+        ) || allRobots.some(r =>
+            r.id !== robot.id &&
+            r.carryingItems.some(i => i.type === 'green') &&
+            Math.sqrt(Math.pow(r.x - robot.x, 2) + Math.pow(r.y - robot.y, 2)) <= HAZARDOUS_ITEM_RADIUS
+        );
 
-    if (isNearHazard) {
-        totalSpeed *= HAZARDOUS_ITEM_SLOWDOWN;
+        if (isNearHazard) {
+            totalSpeed *= HAZARDOUS_ITEM_SLOWDOWN;
+        }
     }
 
     let updatedRobot = { ...robot };
@@ -254,9 +275,13 @@ const updateRobotState = (
                 hardObstacles
             );
 
-            updatedRobot = { ...updatedRobot, x, y, moveProgress, path: newPath };
+            // Proximity Pickup: If within pickup radius of target, consider it "reached"
+            const distToTarget = Math.sqrt(Math.pow(robot.target.x - x, 2) + Math.pow(robot.target.y - y, 2));
+            const actuallyReached = reached || distToTarget <= pickupRadius;
 
-            if (blocked) {
+            updatedRobot = { ...updatedRobot, x, y, moveProgress, path: actuallyReached ? [] : newPath };
+
+            if (blocked && !actuallyReached) {
                 updatedRobot.blockedTicks = (updatedRobot.blockedTicks || 0) + 1;
                 // If blocked by Player (hard obstacle), reroute faster
                 const threshold = blockedByHard ? 3 : getBlockedThreshold(robot.id);
@@ -265,12 +290,12 @@ const updateRobotState = (
                     updatedRobot.path = [];
                     updatedRobot.blockedTicks = 0;
                 }
-            } else if (x !== robot.x || y !== robot.y || reached) {
+            } else if (actuallyReached || x !== robot.x || y !== robot.y) {
                 // Only reset if we actually made progress to a new cell or reached destination
                 updatedRobot.blockedTicks = 0;
             }
 
-            if (reached) {
+            if (actuallyReached) {
                 updatedRobot.state = 'picking';
                 updatedRobot.moveProgress = 0;
                 updatedRobot.path = [];
@@ -280,10 +305,12 @@ const updateRobotState = (
         }
 
         case 'picking': {
-            // Pick up item at current location (robust to fractional drift)
-            const itemIndex = items.findIndex(
-                item => Math.round(item.x) === robot.x && Math.round(item.y) === robot.y
-            );
+            // Pick up item within pickup radius (robust to fractional drift)
+            const itemIndex = items.findIndex(item => {
+                const dx = Math.abs(Math.round(item.x) - robot.x);
+                const dy = Math.abs(Math.round(item.y) - robot.y);
+                return dx <= pickupRadius && dy <= pickupRadius;
+            });
 
             if (itemIndex !== -1) {
                 const item = { ...items[itemIndex], status: 'carried' as const, carrierId: robot.id };
@@ -416,6 +443,7 @@ const updateRobotState = (
                 targetOrderId: undefined,
                 targetOrderIds: [],
                 blockedTicks: 0,
+                stunTicks: (upgrades.includes('overload') && Math.random() < 0.1) ? 180 : 0 // 10% chance to stun for 3s (180 ticks at 60fps)
             };
             break;
         }
@@ -465,7 +493,8 @@ export const updateRobots = (
             multiCarryActive,
             hard,
             soft,
-            robots
+            robots,
+            upgrades
         );
 
         // Add robot's new position to soft obstacle set
@@ -502,6 +531,7 @@ export const createRobot = (existingRobots: Robot[]): Robot => {
         speedMultiplier: 1.0,
         moveProgress: 0,
         blockedTicks: 0,
+        stunTicks: 0,
     };
 };
 

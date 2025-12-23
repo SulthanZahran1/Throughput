@@ -44,6 +44,7 @@ export interface Robot {
     moveProgress: number; // Accumulated time towards next cell move (0-1)
     path?: { x: number, y: number }[]; // Current planned path for visualization
     blockedTicks: number; // Number of ticks the robot has been blocked
+    stunTicks: number; // Ticks remaining in stun/reboot state
 }
 
 export interface Player {
@@ -75,7 +76,10 @@ export type UpgradeId =
     | 'priority_orders'
     | 'multi_carry'
     | 'double_xp'
-    | 'order_radar';
+    | 'order_radar'
+    | 'power_lifter'
+    | 'lead_siding'
+    | 'overload';
 
 export interface Upgrade {
     id: UpgradeId;
