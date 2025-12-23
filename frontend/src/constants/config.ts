@@ -9,7 +9,7 @@ export const ORDER_TIMEOUT = 60000;   // ms to fulfill order (lower = harder)
 export const ROBOT_SPEED = 4;         // cells per second (lower = slower)
 // ==========================================
 
-export const PLAYER_SPEED = 4; // Grid cells per second (approx)
+export const PLAYER_SPEED = 8; // Grid cells per second (approx)
 
 export const IO_PORT = { x: 0, y: 8 }; // Middle of left wall
 

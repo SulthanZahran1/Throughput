@@ -111,7 +111,7 @@ const updatePlayerMovement = (
     // effectiveSpeed is already calculated above
 
     // Build occupancy sets
-    const { soft: robotCells } = buildOccupancySets(robots, player);
+    const { soft: robotCells } = buildOccupancySets(robots, player, items);
 
     // For player pathfinding:
     // Robots are "hard" obstacles to some degree, but let's treat them as soft for player too

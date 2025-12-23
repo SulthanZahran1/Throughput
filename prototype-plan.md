@@ -175,6 +175,7 @@ Items drift slowly toward I/O ports. If the port is blocked:
 - [x] Cell reservation (no head-on collisions)
 - [x] Robot intention visualization (dotted paths, markers)
 - [x] Smart player movement (avoiding robots)
+- [x] **Route-finding Test Suite**: Automated verification for edge cases (deadlocks, item avoidance, drift).
 
 **Test question:** Does the system feel reliable and transparent?
 

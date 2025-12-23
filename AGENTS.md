@@ -224,6 +224,7 @@ npm install
 npm run dev      # localhost:5173
 npm run lint
 npm run build
+npx tsx src/engine/routefinding.test.ts # Run route-finding tests
 ```
 
 ---

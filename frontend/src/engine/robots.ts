@@ -5,14 +5,21 @@ import { getRobotSpeedMultiplier, hasPriorityOrders, hasMultiCarry } from './upg
 import { findPath } from './astar';
 
 /**
- * Build sets of occupied cells from robot and player positions
+ * Build sets of occupied cells from robot, player, and item positions
  */
-export const buildOccupancySets = (robots: Robot[], player: Player): { hard: Set<string>, soft: Set<string> } => {
+export const buildOccupancySets = (robots: Robot[], player: Player, items: Item[]): { hard: Set<string>, soft: Set<string> } => {
     const hard = new Set<string>();
     const soft = new Set<string>();
 
     // Player is a hard obstacle (robots cannot move through)
     hard.add(`${player.x},${player.y}`);
+
+    // Items on the ground are soft obstacles (weighted pathfinding)
+    for (const item of items) {
+        if (item.status === 'on_ground') {
+            soft.add(`${Math.round(item.x)},${Math.round(item.y)}`);
+        }
+    }
 
     // Other robots are soft obstacles (weighted pathfinding)
     for (const robot of robots) {
@@ -438,7 +445,7 @@ export const updateRobots = (
     const updatedRobots: Robot[] = [];
 
     // Build initial occupancy sets
-    const { hard, soft } = buildOccupancySets(robots, player);
+    const { hard, soft } = buildOccupancySets(robots, player, items);
 
     for (const robot of robots) {
         const collisionSlowdown = getRobotCollisionSlowdown(robot, robots);
