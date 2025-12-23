@@ -170,7 +170,8 @@ Items drift slowly toward I/O ports. If the port is blocked:
 
 ### 6.4 Phase 4: Polish & Intelligence (Complete)
 
-- [x] A* Pathfinding for robots
+- [x] A* Pathfinding for robots and player
+- [x] Weighted traversal (Soft obstacles) for better flow
 - [x] Cell reservation (no head-on collisions)
 - [x] Robot intention visualization (dotted paths, markers)
 - [x] Smart player movement (avoiding robots)

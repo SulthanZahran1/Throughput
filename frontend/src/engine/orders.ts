@@ -1,5 +1,5 @@
 import type { Order, ItemType, Item } from '../types/game';
-import { ORDER_TIMEOUT, IO_PORT } from '../constants/config';
+import { ORDER_TIMEOUT, IO_PORT, FRAGILE_ITEM_DECAY_MULTIPLIER } from '../constants/config';
 
 interface OrderWithItem {
     order: Order;
@@ -40,6 +40,7 @@ export const spawnOrderWithItem = (
         type,
         x: itemX,
         y: itemY,
+        status: 'on_ground',
     };
 
     const order: Order = {
@@ -53,12 +54,25 @@ export const spawnOrderWithItem = (
     return { order, item };
 };
 
-export const updateOrders = (orders: Order[], delta: number): { activeOrders: Order[], failedCount: number, failedItemIds: string[] } => {
+export const updateOrders = (
+    orders: Order[],
+    delta: number,
+    itemsOnGround: Item[]
+): { activeOrders: Order[], failedCount: number, failedItemIds: string[] } => {
     let failedCount = 0;
     const failedItemIds: string[] = [];
 
     const activeOrders = orders.filter(order => {
-        order.timeLeft -= delta;
+        // Fragile trait: Blue items decay faster on the ground
+        let decayMultiplier = 1.0;
+        const isOnGround = itemsOnGround.some(i => i.id === order.itemId);
+
+        if (isOnGround && order.type === 'blue') {
+            decayMultiplier = FRAGILE_ITEM_DECAY_MULTIPLIER;
+        }
+
+        order.timeLeft -= delta * decayMultiplier;
+
         if (order.timeLeft <= 0) {
             failedCount++;
             failedItemIds.push(order.itemId);

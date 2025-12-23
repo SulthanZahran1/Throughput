@@ -7,11 +7,15 @@ import {
     TARGET_RUN_TIME,
     IO_PORT,
     getOrderSpawnRate,
-    GRID_SIZE,
     PLAYER_SPEED,
+    HEAVY_ITEM_SLOWDOWN,
+    HAZARDOUS_ITEM_RADIUS,
+    HAZARDOUS_ITEM_SLOWDOWN,
 } from '../constants/config';
 import { getRandomUpgrades, getOrderTimeExtension, getConveyorSpeed, getXpMultiplier } from './upgrades';
-import { tryPickupItem, findSmarterMove } from './player';
+import { tryPickupItem } from './player';
+import { findPath } from './astar';
+import { buildOccupancySets, moveAlongPath } from './robots';
 
 /**
  * Check if player should level up and trigger upgrade selection
@@ -68,7 +72,27 @@ const updatePlayerMovement = (
 
     // Calculate how much progress we make this tick
     // PLAYER_SPEED is in cells per second
-    const effectiveSpeed = PLAYER_SPEED * player.speedMultiplier;
+    let speedMultiplier = player.speedMultiplier;
+
+    // Heavy trait: Slowdown if carrying a red item
+    if (player.carrying?.type === 'red') {
+        speedMultiplier *= HEAVY_ITEM_SLOWDOWN;
+    }
+
+    // Hazardous trait: Slowdown if near a green item (on ground or carried by robot)
+    const isNearHazard = items.some(i =>
+        i.type === 'green' &&
+        Math.sqrt(Math.pow(i.x - player.x, 2) + Math.pow(i.y - player.y, 2)) <= HAZARDOUS_ITEM_RADIUS
+    ) || robots.some(r =>
+        r.carryingItems.some(i => i.type === 'green') &&
+        Math.sqrt(Math.pow(r.x - player.x, 2) + Math.pow(r.y - player.y, 2)) <= HAZARDOUS_ITEM_RADIUS
+    );
+
+    if (isNearHazard) {
+        speedMultiplier *= HAZARDOUS_ITEM_SLOWDOWN;
+    }
+
+    const effectiveSpeed = PLAYER_SPEED * speedMultiplier;
     const progressThisTick = effectiveSpeed * (delta / 1000);
     const newProgress = player.moveProgress + progressThisTick;
 
@@ -84,34 +108,57 @@ const updatePlayerMovement = (
     }
 
     // We can move! Calculate new position
-    const remainingProgress = newProgress - 1;
+    // effectiveSpeed is already calculated above
 
-    const { x: newX, y: newY } = findSmarterMove(
-        { x: player.x, y: player.y },
-        { x: player.targetX, y: player.targetY },
-        robots
-    );
+    // Build occupancy sets
+    const { soft: robotCells } = buildOccupancySets(robots, player);
 
-    // If we couldn't move at all (blocked in all directions)
-    if (newX === player.x && newY === player.y) {
-        return {
-            player: { ...player, moveProgress: 0.5 },
-            items,
-            orders,
-            xpGain: 0,
-            ordersCompleted: 0
-        };
+    // For player pathfinding:
+    // Robots are "hard" obstacles to some degree, but let's treat them as soft for player too
+    // so player can find a path through a crowd if no other way exists, then wait for them to move.
+    // Or better: robots are hard for player manual movement, but soft for A* tap-to-move rerouting.
+
+    // Pathfinding: If we don't have a path or it's empty, find one
+    let currentPath = player.path || [];
+    if (currentPath.length === 0) {
+        // Player treats robots as soft obstacles (high cost) to avoid being completely stuck
+        const path = findPath(
+            { x: player.x, y: player.y },
+            { x: player.targetX, y: player.targetY },
+            new Set(), // No "hard" obstacles for player pathfinding (they wait/reroute)
+            robotCells
+        );
+        if (path) {
+            currentPath = path;
+        } else {
+            // Try again next tick
+            return {
+                player: { ...player, moveProgress: 0.5 },
+                items,
+                orders,
+                xpGain: 0,
+                ordersCompleted: 0
+            };
+        }
     }
 
+    const { x: newX, y: newY, reached, moveProgress, newPath } = moveAlongPath(
+        { ...player, path: currentPath },
+        delta,
+        effectiveSpeed,
+        robotCells // Player is blocked by robots (hard block for movement velocity)
+    );
+
     // Clear target if we've arrived
-    const arrivedAtTarget = newX === player.targetX && newY === player.targetY;
-    let updatedPlayer = {
+    const arrivedAtTarget = reached;
+    let updatedPlayer: Player = {
         ...player,
         x: newX,
         y: newY,
         targetX: arrivedAtTarget ? null : player.targetX,
         targetY: arrivedAtTarget ? null : player.targetY,
-        moveProgress: arrivedAtTarget ? 0 : remainingProgress,
+        moveProgress: arrivedAtTarget ? 0 : moveProgress,
+        path: newPath,
     };
     let updatedItems = items;
     let updatedOrders = orders;
@@ -158,13 +205,59 @@ export const tickGame = (state: GameState, delta: number): GameState => {
 
     // Update Orders (with time extension from upgrades)
     const orderTimeExtension = getOrderTimeExtension(state.upgrades);
-    const { activeOrders, failedCount, failedItemIds } = updateOrders(newState.orders, delta);
+    const { activeOrders, failedCount, failedItemIds } = updateOrders(newState.orders, delta, newState.items);
     newState.orders = activeOrders;
     newState.failedOrders += failedCount;
 
-    // Remove items associated with failed orders
+    // Handle items associated with failed orders
     if (failedItemIds.length > 0) {
+        // 1. Remove from ground
         newState.items = newState.items.filter(item => !failedItemIds.includes(item.id));
+
+        // 2. Remove from player
+        if (newState.player.carrying && failedItemIds.includes(newState.player.carrying.id)) {
+            newState.player = { ...newState.player, carrying: null };
+        }
+
+        // 3. Remove from robots
+        newState.robots = newState.robots.map(robot => {
+            const stillCarrying = robot.carryingItems.filter(item => !failedItemIds.includes(item.id));
+            const lostItems = robot.carryingItems.length - stillCarrying.length;
+
+            if (lostItems > 0) {
+                // If robot lost all items it was carrying, and it was moving to port or dropping, reset it
+                let nextRobotState = robot.state;
+                let nextTarget = robot.target;
+                let nextTargetOrderId = robot.targetOrderId;
+                let nextTargetOrderIds = robot.targetOrderIds.filter(id =>
+                    !newState.orders.some(o => failedItemIds.includes(o.itemId) && o.id === id)
+                );
+
+                // More robust: if the item for targetOrderId is gone, reset targetOrderId
+                const targetOrder = state.orders.find(o => o.id === robot.targetOrderId);
+                if (targetOrder && failedItemIds.includes(targetOrder.itemId)) {
+                    nextTargetOrderId = undefined;
+                }
+
+                if (stillCarrying.length === 0 && (robot.state === 'moving_to_port' || robot.state === 'dropping')) {
+                    nextRobotState = 'idle';
+                    nextTarget = null;
+                    nextTargetOrderId = undefined;
+                    nextTargetOrderIds = [];
+                }
+
+                return {
+                    ...robot,
+                    carryingItems: stillCarrying,
+                    state: nextRobotState,
+                    target: nextTarget,
+                    targetOrderId: nextTargetOrderId,
+                    targetOrderIds: nextTargetOrderIds,
+                    path: stillCarrying.length === 0 ? [] : robot.path
+                };
+            }
+            return robot;
+        });
     }
 
     if (newState.failedOrders >= 5) {

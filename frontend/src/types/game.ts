@@ -1,10 +1,14 @@
 export type ItemType = 'red' | 'blue' | 'green';
 
+export type ItemStatus = 'on_ground' | 'carried' | 'delivered' | 'expired';
+
 export interface Item {
     id: string;
     type: ItemType;
     x: number;
     y: number;
+    status: ItemStatus;
+    carrierId?: string; // 'player' or robot ID
 }
 
 export interface Order {
@@ -31,6 +35,7 @@ export interface Robot {
     speedMultiplier: number; // Base speed modifier from upgrades
     moveProgress: number; // Accumulated time towards next cell move (0-1)
     path?: { x: number, y: number }[]; // Current planned path for visualization
+    blockedTicks: number; // Number of ticks the robot has been blocked
 }
 
 export interface Player {
@@ -42,6 +47,7 @@ export interface Player {
     targetX: number | null; // Target to walk towards (tap-to-move)
     targetY: number | null;
     moveProgress: number; // Accumulated time towards next cell move (0-1)
+    path?: { x: number, y: number }[]; // Current planned path for visualization
 }
 
 export interface GridSlot {

@@ -38,6 +38,7 @@ const createInitialRobot = (): Robot => ({
     targetOrderIds: [],
     speedMultiplier: 1.0,
     moveProgress: 0,
+    blockedTicks: 0,
 });
 
 const initialState: GameState = {
@@ -94,15 +95,14 @@ export const useGameStore = create<GameState & GameActions>((set) => ({
 
             let newState = {
                 ...state,
-                player: { ...state.player, x: newX, y: newY, targetX: null, targetY: null },
+                player: { ...state.player, x: newX, y: newY, targetX: null, targetY: null, path: [] },
             };
 
-            // Try to pick up item at new location
             const pickupResult = tryPickupItem(newState.player, newState.grid, newState.items);
             if (pickupResult) {
                 newState = {
                     ...newState,
-                    player: { ...pickupResult.player, targetX: null, targetY: null },
+                    player: { ...pickupResult.player, targetX: null, targetY: null, path: [] },
                     items: pickupResult.items,
                 };
             }
@@ -172,7 +172,7 @@ export const useGameStore = create<GameState & GameActions>((set) => ({
             if (state.isGameOver || state.isSelectingUpgrade) return state;
             return {
                 ...state,
-                player: { ...state.player, targetX: x, targetY: y },
+                player: { ...state.player, targetX: x, targetY: y, path: [] },
             };
         });
     },
@@ -180,7 +180,7 @@ export const useGameStore = create<GameState & GameActions>((set) => ({
     clearPlayerTarget: () => {
         set((state) => ({
             ...state,
-            player: { ...state.player, targetX: null, targetY: null },
+            player: { ...state.player, targetX: null, targetY: null, path: [] },
         }));
     },
 

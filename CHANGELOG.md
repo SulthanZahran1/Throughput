@@ -6,12 +6,16 @@ All notable changes to this project will be documented in this file.
 
 ### Added
 - **A* Pathfinding for Robots**: Robots now use A* search to navigate around obstacles and other robots.
+- **A* Pathfinding for Player**: Tap-to-move now uses full A* search to navigate around robots and obstacles reliably.
 - **Cell Reservation System**: Robots reserve their next move, preventing head-on collisions and jittering.
 - **Robot Movement Visualization**:
   - **Dotted Path Lines**: Faint lines show the full planned trajectory of each robot.
   - **Pulsing Target Markers**: Highlight the current goal cell of each robot.
   - **Color Coding**: Orange for "moving to item", Blue for "returning to port".
 - **Smarter Player Avoidance**: Tap-to-move now automatically steps around robots and stationary obstacles.
+- **Weighted A* Pathfinding**: Robots now use weighted traversal costs (5 for robots, 1 for empty) to prefer open paths while still being able to path find "through" soft obstacles if necessary.
+- **Hard/Soft Occupancy Sets**: Clearly separated hard obstacles (Player) from soft obstacles (Robots) to prevent strict deadlocks and allow smoother flow in dense fleets.
+- **Faster Rerouting**: Robots detect Player blockage instantly and reroute within 3 ticks, making them feel much more responsive to the player's presence.
 
 ### Added
 - **Mobile-Friendly Support**: Game now works on mobile devices with responsive layout and touch controls.

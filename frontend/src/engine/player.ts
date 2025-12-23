@@ -94,15 +94,15 @@ export const tryPickupItem = (
 
     const pickupRadius = player.pickupRadius;
 
-    // Check for items on the ground within pickup radius
+    // Check for items on the ground within pickup radius (robust to fractional drift)
     const itemIndex = items.findIndex(i => {
-        const dx = Math.abs(i.x - player.x);
-        const dy = Math.abs(i.y - player.y);
+        const dx = Math.abs(Math.round(i.x) - player.x);
+        const dy = Math.abs(Math.round(i.y) - player.y);
         return dx <= pickupRadius && dy <= pickupRadius;
     });
 
     if (itemIndex !== -1) {
-        const item = items[itemIndex];
+        const item = { ...items[itemIndex], status: 'carried' as const, carrierId: 'player' };
         const newItems = [...items];
         newItems.splice(itemIndex, 1);
         return {

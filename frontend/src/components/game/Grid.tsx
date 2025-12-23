@@ -22,12 +22,14 @@ interface GridEntityProps {
 export const GridEntity: React.FC<GridEntityProps> = ({ x, y, children, className = '', style = {} }) => {
     return (
         <div
-            className={`flex items-center justify-center pointer-events-none ${className}`}
+            className={`absolute flex items-center justify-center pointer-events-none ${className}`}
             style={{
-                gridColumn: x + 1, // CSS grid is 1-indexed
-                gridRow: y + 1,
                 width: 'var(--cell-size)',
                 height: 'var(--cell-size)',
+                left: 'var(--grid-padding)',
+                top: 'var(--grid-padding)',
+                transform: `translate(calc(${x} * (var(--cell-size) + var(--grid-gap))), calc(${y} * (var(--cell-size) + var(--grid-gap))))`,
+                transition: 'transform 0.1s linear', // Smooth transition for drift
                 ...style,
             }}
         >

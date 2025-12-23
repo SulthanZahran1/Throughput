@@ -146,6 +146,7 @@ function tick(delta: number) {
   updatePlayer(delta);
   updateOrders(delta);
   updateRobots(delta); // Handles A* pathing and cell reservations
+  // Player also uses A* for tap-to-move navigation
   checkLevelUp();
   checkGameOver();
 }
@@ -182,6 +183,14 @@ function tick(delta: number) {
 - [x] Win condition
 
 **Test:** Is late-game spectacle real?
+
+### Phase 4: Polish (Complete)
+- [x] A* Pathfinding (Player & Robots)
+- [x] Weighted traversal (Soft obstacles)
+- [x] Intention visualization (Path lines)
+- [x] Instant player-avoidance rerouting
+
+**Test:** Does the system feel reliable and smart?
 
 ---
 

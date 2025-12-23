@@ -13,13 +13,70 @@ interface Node extends Point {
 }
 
 /**
+ * Simple Min-Heap Priority Queue for A* nodes
+ */
+class PriorityQueue<T> {
+    private heap: { priority: number; item: T }[] = [];
+
+    push(item: T, priority: number) {
+        this.heap.push({ priority, item });
+        this.bubbleUp();
+    }
+
+    pop(): T | undefined {
+        if (this.size() === 0) return undefined;
+        const top = this.heap[0].item;
+        const last = this.heap.pop()!;
+        if (this.size() > 0) {
+            this.heap[0] = last;
+            this.bubbleDown();
+        }
+        return top;
+    }
+
+    size(): number {
+        return this.heap.length;
+    }
+
+    private bubbleUp() {
+        let index = this.heap.length - 1;
+        while (index > 0) {
+            const parentIndex = Math.floor((index - 1) / 2);
+            if (this.heap[index].priority >= this.heap[parentIndex].priority) break;
+            [this.heap[index], this.heap[parentIndex]] = [this.heap[parentIndex], this.heap[index]];
+            index = parentIndex;
+        }
+    }
+
+    private bubbleDown() {
+        let index = 0;
+        while (true) {
+            let smallest = index;
+            const left = 2 * index + 1;
+            const right = 2 * index + 2;
+
+            if (left < this.heap.length && this.heap[left].priority < this.heap[smallest].priority) {
+                smallest = left;
+            }
+            if (right < this.heap.length && this.heap[right].priority < this.heap[smallest].priority) {
+                smallest = right;
+            }
+            if (smallest === index) break;
+            [this.heap[index], this.heap[smallest]] = [this.heap[smallest], this.heap[index]];
+            index = smallest;
+        }
+    }
+}
+
+/**
  * A* Pathfinding algorithm
  * Returns an array of points from start to target, or null if no path found.
  */
 export const findPath = (
     start: Point,
     target: Point,
-    occupiedCells: Set<string>,
+    hardObstacles: Set<string> = new Set(),
+    softObstacles: Set<string> = new Set(),
     gridWidth: number = GRID_SIZE,
     gridHeight: number = GRID_SIZE
 ): Point[] | null => {
@@ -28,34 +85,35 @@ export const findPath = (
         return [start];
     }
 
-    const openList: Node[] = [];
-    const closedList: Set<string> = new Set();
+    const openQueue = new PriorityQueue<Node>();
+    const openMap = new Map<string, Node>();
+    const closedList = new Set<string>();
 
     const startNode: Node = {
         ...start,
         g: 0,
-        h: Math.abs(target.x - start.x) + Math.abs(target.y - start.y),
+        h: Math.abs(Math.round(target.x) - start.x) + Math.abs(Math.round(target.y) - start.y),
         f: 0,
         parent: null
     };
     startNode.f = startNode.g + startNode.h;
 
-    openList.push(startNode);
+    openQueue.push(startNode, startNode.f);
+    openMap.set(`${startNode.x},${startNode.y}`, startNode);
 
-    while (openList.length > 0) {
-        // Find node with lowest f cost
-        let currentIndex = 0;
-        for (let i = 1; i < openList.length; i++) {
-            if (openList[i].f < openList[currentIndex].f) {
-                currentIndex = i;
-            }
-        }
-
-        const currentNode = openList[currentIndex];
+    while (openQueue.size() > 0) {
+        const currentNode = openQueue.pop()!;
         const currentKey = `${currentNode.x},${currentNode.y}`;
 
+        // If we already found a better path to this node, skip it
+        const mappedNode = openMap.get(currentKey);
+        if (mappedNode && mappedNode.g < currentNode.g) {
+            continue;
+        }
+
         // Found the target!
-        if (currentNode.x === target.x && currentNode.y === target.y) {
+        // Robustness: Round goal coordinates to handle fractional targets (conveyors)
+        if (currentNode.x === Math.round(target.x) && currentNode.y === Math.round(target.y)) {
             const path: Point[] = [];
             let temp: Node | null = currentNode;
             while (temp !== null) {
@@ -65,8 +123,7 @@ export const findPath = (
             return path.reverse();
         }
 
-        // Remove from open, add to closed
-        openList.splice(currentIndex, 1);
+        openMap.delete(currentKey);
         closedList.add(currentKey);
 
         // Check neighbors (4-way cardinal movement)
@@ -85,9 +142,9 @@ export const findPath = (
                 continue;
             }
 
-            // Occupied? (Allow target cell to be occupied since we're trying to reach it)
+            // Hard Obstacles? (Allow target cell even if hard-blocked, e.g. robot standing on port)
             const isTarget = neighbor.x === target.x && neighbor.y === target.y;
-            if (occupiedCells.has(neighborKey) && !isTarget) {
+            if (hardObstacles.has(neighborKey) && !isTarget) {
                 continue;
             }
 
@@ -96,24 +153,24 @@ export const findPath = (
                 continue;
             }
 
-            const gScore = currentNode.g + 1;
-            let neighborNode = openList.find(n => n.x === neighbor.x && n.y === neighbor.y);
+            // Weighted cost: 1 for empty, 5 for soft obstacles (like other robots)
+            // This encourages robots to path around each other, but path THROUGH if blocked.
+            const traversalCost = softObstacles.has(neighborKey) ? 5 : 1;
+            const gScore = currentNode.g + traversalCost;
 
-            if (!neighborNode) {
-                neighborNode = {
+            const existingNode = openMap.get(neighborKey);
+
+            if (!existingNode || gScore < existingNode.g) {
+                const h = Math.abs(Math.round(target.x) - neighbor.x) + Math.abs(Math.round(target.y) - neighbor.y);
+                const newNode: Node = {
                     ...neighbor,
                     g: gScore,
-                    h: Math.abs(target.x - neighbor.x) + Math.abs(target.y - neighbor.y),
-                    f: 0,
+                    h,
+                    f: gScore + h,
                     parent: currentNode
                 };
-                neighborNode.f = neighborNode.g + neighborNode.h;
-                openList.push(neighborNode);
-            } else if (gScore < neighborNode.g) {
-                // Better path found
-                neighborNode.g = gScore;
-                neighborNode.f = neighborNode.g + neighborNode.h;
-                neighborNode.parent = currentNode;
+                openMap.set(neighborKey, newNode);
+                openQueue.push(newNode, newNode.f);
             }
         }
     }
