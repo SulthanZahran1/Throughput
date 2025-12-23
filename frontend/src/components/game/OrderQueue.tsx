@@ -32,10 +32,22 @@ export const OrderQueue: React.FC = () => {
                             <motion.div
                                 key={order.id}
                                 initial={{ opacity: 0, x: -20 }}
-                                animate={{ opacity: 1, x: 0 }}
+                                animate={isUrgent ? {
+                                    opacity: 1,
+                                    x: 0,
+                                    scale: [1, 1.02, 1],
+                                    rotate: [0, -1, 1, -1, 0]
+                                } : {
+                                    opacity: 1,
+                                    x: 0
+                                }}
+                                transition={isUrgent ? {
+                                    scale: { duration: 0.4, repeat: Infinity },
+                                    rotate: { duration: 0.2, repeat: Infinity }
+                                } : {}}
                                 exit={{ opacity: 0, x: 20 }}
                                 className={`flex flex-col p-1.5 sm:p-2 bg-gray-800 rounded border transition-all ${isUrgent
-                                    ? 'border-red-500 shadow-lg shadow-red-500/30 animate-pulse'
+                                    ? 'border-red-500 shadow-lg shadow-red-500/30'
                                     : 'border-gray-700'
                                     }`}
                             >

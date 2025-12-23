@@ -20,6 +20,14 @@ export interface Order {
     itemId: string; // 1:1 pairing with the spawned item
 }
 
+export interface FloatingXp {
+    id: string;
+    amount: number;
+    x: number;
+    y: number;
+    createdAt: number;
+}
+
 // Robot FSM States
 export type RobotState = 'idle' | 'moving_to_item' | 'picking' | 'moving_to_port' | 'dropping';
 
@@ -101,4 +109,5 @@ export interface GameState {
 
     // Stats
     ordersCompleted: number;
+    floatingXp: FloatingXp[];
 }

@@ -1,5 +1,6 @@
 import { useGameStore } from '../../store/gameStore';
 import type { Upgrade, UpgradeId } from '../../types/game';
+import { motion, AnimatePresence } from 'framer-motion';
 
 interface UpgradeCardProps {
     upgrade: Upgrade;
@@ -33,25 +34,46 @@ export const UpgradeModal = () => {
     }
 
     return (
-        <div className="fixed inset-0 bg-black/80 flex items-center justify-center z-50 p-4">
-            <div className="bg-gray-900 p-4 sm:p-8 rounded-2xl border border-gray-700 max-w-2xl w-full max-h-[90vh] overflow-y-auto">
-                <h2 className="text-xl sm:text-2xl font-bold text-yellow-400 text-center mb-1 sm:mb-2">
-                    Level Up!
-                </h2>
-                <p className="text-gray-400 text-center text-sm sm:text-base mb-4 sm:mb-6">
-                    You reached level {level}. Choose an upgrade:
-                </p>
+        <AnimatePresence>
+            {isSelectingUpgrade && (
+                <motion.div
+                    initial={{ opacity: 0 }}
+                    animate={{ opacity: 1 }}
+                    exit={{ opacity: 0 }}
+                    className="fixed inset-0 bg-black/80 flex items-center justify-center z-50 p-4"
+                >
+                    <motion.div
+                        initial={{ scale: 0.8, y: 20 }}
+                        animate={{ scale: 1, y: 0 }}
+                        className="bg-gray-900 p-4 sm:p-8 rounded-2xl border border-gray-700 max-w-2xl w-full max-h-[90vh] overflow-y-auto relative"
+                    >
+                        <motion.div
+                            initial={{ y: -50, opacity: 0 }}
+                            animate={{ y: 0, opacity: 1 }}
+                            transition={{ delay: 0.2, type: "spring" }}
+                            className="absolute -top-12 left-0 right-0 text-center"
+                        >
+                            <h1 className="text-4xl sm:text-6xl font-black text-yellow-400 drop-shadow-[0_0_20px_rgba(250,204,21,0.5)] italic uppercase tracking-tighter">
+                                Level Up!
+                            </h1>
+                        </motion.div>
 
-                <div className="flex flex-wrap justify-center gap-2 sm:gap-4">
-                    {pendingUpgrades.map(upgrade => (
-                        <UpgradeCard
-                            key={upgrade.id}
-                            upgrade={upgrade}
-                            onSelect={selectUpgrade}
-                        />
-                    ))}
-                </div>
-            </div>
-        </div>
+                        <p className="text-gray-400 text-center text-sm sm:text-base mb-4 sm:mb-6 mt-4">
+                            You reached level {level}. Choose an upgrade:
+                        </p>
+
+                        <div className="flex flex-wrap justify-center gap-2 sm:gap-4">
+                            {pendingUpgrades.map(upgrade => (
+                                <UpgradeCard
+                                    key={upgrade.id}
+                                    upgrade={upgrade}
+                                    onSelect={selectUpgrade}
+                                />
+                            ))}
+                        </div>
+                    </motion.div>
+                </motion.div>
+            )}
+        </AnimatePresence>
     );
 };

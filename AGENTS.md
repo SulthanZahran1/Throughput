@@ -60,7 +60,9 @@ See `docs/prototype-plan.md` for scope, upgrades, and success criteria.
 | **Order** | Request for item type, has timer, fails if expired |
 | **Robot** | Auto-fulfills nearest orders, unlocked via upgrades |
 | **XP Gem** | Dropped on order complete, walk over to collect |
-| **Conveyor** | Items on ground drift toward I/O ports |
+| **Floating XP** | Satisfying reward pops on delivery (automated & manual) |
+| **Conveyor** | Items on ground drift toward I/O ports (ghost path visuals) |
+| **Surge (Rush Hour)** | Period high-intensity events (2x spawns, 3x XP rewards) |
 
 ---
 
@@ -116,7 +118,7 @@ frontend/src/
 ├── types/
 │   └── game.ts      # All interfaces
 ├── constants/
-│   └── config.ts    # Balance numbers
+│   └── config.ts    # Balance numbers (Surge settings)
 └── hooks/
     ├── useGameLoop.ts
     └── useKeyboard.ts
@@ -189,6 +191,7 @@ function tick(delta: number) {
 - [x] Weighted traversal (Soft obstacles)
 - [x] Intention visualization (Path lines)
 - [x] Instant player-avoidance rerouting
+- [x] **Fun Factor Polish**: Floating XP, Rush Hour events, Conveyor projections, and visual jiggle.
 
 **Test:** Does the system feel reliable and smart?
 

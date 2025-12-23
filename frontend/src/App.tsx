@@ -11,7 +11,8 @@ import { useGameStore } from './store/gameStore';
 import { useGameLoop } from './hooks/useGameLoop';
 import { useKeyboard } from './hooks/useKeyboard';
 import { useSwipe } from './hooks/useSwipe';
-import { TARGET_RUN_TIME } from './constants/config';
+import { TARGET_RUN_TIME, isRushHour } from './constants/config';
+import { FloatingXpLayer } from './components/game/FloatingXp';
 
 // Format milliseconds to MM:SS
 const formatTime = (ms: number): string => {
@@ -62,7 +63,8 @@ function App() {
   useSwipe();
 
   return (
-    <div className="min-h-screen bg-gray-950 text-white flex items-center justify-center p-2 sm:p-4 md:p-8">
+    <div className={`min-h-screen transition-colors duration-1000 flex items-center justify-center p-2 sm:p-4 md:p-8 ${isRushHour(runTime) ? 'bg-amber-950/20 bg-gray-950' : 'bg-gray-950'
+      }`}>
       {/* Landscape Orientation Prompt for Mobile */}
       {showOrientationPrompt && (
         <div className="fixed inset-0 bg-gray-950/95 z-[100] flex flex-col items-center justify-center p-8 text-center">
@@ -93,6 +95,7 @@ function App() {
             {robots.map(robot => (
               <Robot key={robot.id} robot={robot} />
             ))}
+            <FloatingXpLayer />
           </Grid>
 
           {/* UI Overlay - Top Left - Compact on mobile */}
@@ -100,7 +103,10 @@ function App() {
             {/* Run Timer with Progress */}
             <div className="space-y-0.5 sm:space-y-1">
               <div className="flex justify-between items-center gap-2">
-                <span className="text-amber-400 font-bold text-xs sm:text-base">⏱️ SHIFT</span>
+                <span className={`font-bold text-xs sm:text-base transition-colors ${isRushHour(runTime) ? 'text-amber-400 animate-pulse' : 'text-gray-400'
+                  }`}>
+                  {isRushHour(runTime) ? '⚡ RUSH HOUR' : '⏱️ SHIFT'}
+                </span>
                 <span className="text-xs sm:text-lg">{formatTime(runTime)} / {formatTime(TARGET_RUN_TIME)}</span>
               </div>
               <div className="w-24 sm:w-48 h-1.5 sm:h-2 bg-gray-700 rounded-full overflow-hidden">

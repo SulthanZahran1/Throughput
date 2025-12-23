@@ -11,6 +11,9 @@ import {
     HEAVY_ITEM_SLOWDOWN,
     HAZARDOUS_ITEM_RADIUS,
     HAZARDOUS_ITEM_SLOWDOWN,
+    isRushHour,
+    RUSH_HOUR_XP_MULTIPLIER,
+    RUSH_HOUR_SPAWN_MULTIPLIER,
 } from '../constants/config';
 import { getRandomUpgrades, getOrderTimeExtension, getConveyorSpeed, getXpMultiplier } from './upgrades';
 import { tryPickupItem } from './player';
@@ -50,7 +53,9 @@ const updatePlayerMovement = (
     grid: GameState['grid'],
     orders: GameState['orders'],
     upgrades: GameState['upgrades'],
-    robots: Robot[]
+    robots: Robot[],
+    runTime: number,
+    addFloatingXp?: (amount: number, x: number, y: number) => void
 ): { player: Player; items: GameState['items']; orders: GameState['orders']; xpGain: number; ordersCompleted: number } => {
     if (player.targetX === null || player.targetY === null) {
         return { player, items, orders, xpGain: 0, ordersCompleted: 0 };
@@ -182,7 +187,17 @@ const updatePlayerMovement = (
 
         if (matchingOrder) {
             const xpMultiplier = getXpMultiplier(upgrades);
-            xpGain = Math.floor(XP_PER_ORDER * xpMultiplier);
+            let xp = XP_PER_ORDER * xpMultiplier;
+
+            // Surge: Rush Hour XP bonus
+            if (isRushHour(runTime)) {
+                xp *= RUSH_HOUR_XP_MULTIPLIER;
+            }
+
+            xpGain = Math.floor(xp);
+            // Trigger floating XP notification
+            addFloatingXp?.(xpGain, IO_PORT.x, IO_PORT.y);
+
             updatedPlayer = { ...updatedPlayer, carrying: null };
             updatedOrders = updatedOrders.filter(o => o.id !== matchingOrder.id);
             ordersCompletedCount = 1;
@@ -273,7 +288,13 @@ export const tickGame = (state: GameState, delta: number): GameState => {
 
     // Spawn Orders with dynamic rate (ramps up over time)
     // Each order spawns with its paired item (1:1 relationship)
-    const currentSpawnRate = getOrderSpawnRate(newState.runTime);
+    let currentSpawnRate = getOrderSpawnRate(newState.runTime);
+
+    // Surge: Rush Hour Spawning (faster)
+    if (isRushHour(newState.runTime)) {
+        currentSpawnRate /= RUSH_HOUR_SPAWN_MULTIPLIER;
+    }
+
     const lastSpawnTime = Math.floor((state.runTime - delta) / currentSpawnRate);
     const currentSpawnTime = Math.floor(state.runTime / currentSpawnRate);
 
@@ -300,7 +321,9 @@ export const tickGame = (state: GameState, delta: number): GameState => {
         newState.grid,
         newState.orders,
         newState.upgrades,
-        newState.robots
+        newState.robots,
+        newState.runTime,
+        (newState as any).addFloatingXp
     );
     newState.player = playerResult.player;
     newState.items = playerResult.items;
@@ -326,9 +349,19 @@ export const tickGame = (state: GameState, delta: number): GameState => {
     // Grant XP for completed orders (with multiplier)
     if (robotResult.completedOrders.length > 0) {
         const xpMultiplier = getXpMultiplier(state.upgrades);
-        const xpGain = Math.floor(robotResult.completedOrders.length * XP_PER_ORDER * xpMultiplier);
+        let xpPerOrder = XP_PER_ORDER * xpMultiplier;
+
+        // Surge: Rush Hour XP bonus
+        if (isRushHour(newState.runTime)) {
+            xpPerOrder *= RUSH_HOUR_XP_MULTIPLIER;
+        }
+
+        const xpGain = Math.floor(robotResult.completedOrders.length * xpPerOrder);
         newState.xp += xpGain;
         newState.ordersCompleted += robotResult.completedOrders.length;
+
+        // Trigger floating XP notification(s) at I/O port
+        (newState as any).addFloatingXp?.(xpGain, IO_PORT.x, IO_PORT.y);
     }
 
     // Check for level up

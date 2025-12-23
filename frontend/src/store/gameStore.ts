@@ -13,6 +13,7 @@ interface GameActions {
     clearPlayerTarget: () => void;
     selectUpgrade: (upgradeId: UpgradeId) => void;
     restart: () => void;
+    addFloatingXp: (amount: number, x: number, y: number) => void;
 }
 
 const createInitialGrid = (): GridSlot[][] => {
@@ -66,6 +67,7 @@ const initialState: GameState = {
     isGameOver: false,
     hasWon: false,
     ordersCompleted: 0,
+    floatingXp: [],
 };
 
 export const useGameStore = create<GameState & GameActions>((set) => ({
@@ -181,6 +183,22 @@ export const useGameStore = create<GameState & GameActions>((set) => ({
         set((state) => ({
             ...state,
             player: { ...state.player, targetX: null, targetY: null, path: [] },
+        }));
+    },
+
+    addFloatingXp: (amount: number, x: number, y: number) => {
+        set((state) => ({
+            ...state,
+            floatingXp: [
+                ...state.floatingXp,
+                {
+                    id: `xp-${Date.now()}-${Math.random()}`,
+                    amount,
+                    x,
+                    y,
+                    createdAt: state.runTime,
+                },
+            ],
         }));
     },
 

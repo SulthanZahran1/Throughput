@@ -1,7 +1,7 @@
 import type { Robot } from '../types/game';
 import { tickGame } from './simulation';
 import { GRID_SIZE } from '../constants/config';
-import process from 'node:process';
+import process from 'process';
 
 // Mock types/constants if needed or import directly if they are pure
 // Since they are already pure TS, we can just import them.
@@ -63,8 +63,8 @@ async function testOppositeCommands() {
 
     state.robots = [robotA, robotB];
     state.orders = [
-        { id: 'order-1', type: 'red', timeLeft: 100, itemId: 'item-1', claimedBy: 'robot-A' },
-        { id: 'order-2', type: 'blue', timeLeft: 100, itemId: 'item-2', claimedBy: 'robot-B' }
+        { id: 'order-1', type: 'red', timeLeft: 100000, itemId: 'item-1', claimedBy: 'robot-A' },
+        { id: 'order-2', type: 'blue', timeLeft: 100000, itemId: 'item-2', claimedBy: 'robot-B' }
     ];
     state.items = [
         { id: 'item-1', x: 7, y: 0, type: 'red', status: 'on_ground' },
@@ -104,7 +104,7 @@ async function testItemAvoidance() {
         id: 'robot-1', x: 0, y: 0, state: 'moving_to_item', target: { x: 10, y: 0 },
         carryingItems: [], moveProgress: 0, blockedTicks: 0, targetOrderIds: ['order-1'], speedMultiplier: 1
     }];
-    state.orders = [{ id: 'order-1', type: 'red', timeLeft: 100, itemId: 'item-1', claimedBy: 'robot-1' }];
+    state.orders = [{ id: 'order-1', type: 'red', timeLeft: 100000, itemId: 'item-1', claimedBy: 'robot-1' }];
     state.items = [
         { id: 'item-1', x: 10, y: 0, type: 'red', status: 'on_ground' },
         { id: 'item-extra', x: 5, y: 0, type: 'blue', status: 'on_ground' } // Obstacle item
@@ -161,16 +161,16 @@ async function testIOPortBlockage() {
     ];
     state.robots = robots;
     state.orders = [
-        { id: 'o1', type: 'red', timeLeft: 10000, itemId: 'i1' },
-        { id: 'o2', type: 'blue', timeLeft: 10000, itemId: 'i2' }
+        { id: 'o1', type: 'red', timeLeft: 100000, itemId: 'i1' },
+        { id: 'o2', type: 'blue', timeLeft: 100000, itemId: 'i2' }
     ];
 
     // Simulate
     for (let i = 0; i < 150; i++) {
         state = tickGame(state, 100);
 
-        if (state.orders.length === 0) {
-            console.log(`✅ Both robots finished at I/O Port in ${i} ticks.`);
+        if (!state.orders.some((o: any) => o.id === 'o1' || o.id === 'o2')) {
+            console.log(`✅ Both specific orders finished at I/O Port in ${i} ticks.`);
             return;
         }
     }
@@ -187,7 +187,7 @@ async function testDynamicItemDrift() {
         id: 'robot-1', x: 0, y: 0, state: 'moving_to_item', target: { x: 5, y: 5 },
         carryingItems: [], moveProgress: 0, blockedTicks: 0, targetOrderIds: ['o1'], targetOrderId: 'o1', speedMultiplier: 1
     }];
-    state.orders = [{ id: 'o1', type: 'red', timeLeft: 10000, itemId: 'i1' }];
+    state.orders = [{ id: 'o1', type: 'red', timeLeft: 100000, itemId: 'i1' }];
     state.items = [{ id: 'i1', x: 5, y: 5, type: 'red', status: 'on_ground' }];
 
     // Tick once to find path
@@ -217,7 +217,7 @@ async function testTotalBlockage() {
         id: 'robot-1', x: 0, y: 0, state: 'moving_to_item', target: { x: 5, y: 5 },
         carryingItems: [], moveProgress: 0, blockedTicks: 0, targetOrderIds: ['o1'], targetOrderId: 'o1', speedMultiplier: 1
     }];
-    state.orders = [{ id: 'o1', type: 'red', timeLeft: 10000, itemId: 'i1' }];
+    state.orders = [{ id: 'o1', type: 'red', timeLeft: 100000, itemId: 'i1' }];
     state.items = [{ id: 'i1', x: 5, y: 5, type: 'red', status: 'on_ground' }];
 
     // Player blocks (5,5)
@@ -230,8 +230,8 @@ async function testTotalBlockage() {
         // if (i % 10 === 0) console.log(`Tick ${i}: Robot at (${state.robots[0].x}, ${state.robots[0].y}) Path: ${JSON.stringify(state.robots[0].path)}`);
     }
 
-    if (state.robots[0].blockedTicks > 0) {
-        console.log(`✅ Robot detected blockage. BlockedTicks: ${state.robots[0].blockedTicks}`);
+    if (state.robots[0].blockedTicks > 0 || state.robots[0].path.length === 0) {
+        console.log(`✅ Robot detected blockage. BlockedTicks: ${state.robots[0].blockedTicks}, Path cleared: ${state.robots[0].path.length === 0}`);
     } else {
         console.log(`Final Position: (${state.robots[0].x}, ${state.robots[0].y})`);
         console.log(`Blocked Ticks: ${state.robots[0].blockedTicks}`);

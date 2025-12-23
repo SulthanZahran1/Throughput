@@ -40,6 +40,21 @@ export const INITIAL_ORDER_SPAWN_RATE = 5000; // 5s between orders at start
 export const MIN_ORDER_SPAWN_RATE = 800; // 0.8s at max pressure (late game)
 export const ORDER_RATE_RAMP_DURATION = 600000; // 10 min to reach max rate
 
+// Surge Events: Rush Hour
+export const RUSH_HOUR_INTERVAL = 180000; // Every 3 minutes (180s)
+export const RUSH_HOUR_DURATION = 30000; // 30 seconds
+export const RUSH_HOUR_SPAWN_MULTIPLIER = 2.0; // 2x faster spawns
+export const RUSH_HOUR_XP_MULTIPLIER = 3.0; // 3x XP reward
+
+/**
+ * Check if we are currently in Rush Hour
+ */
+export const isRushHour = (runTime: number): boolean => {
+    if (runTime < RUSH_HOUR_INTERVAL) return false;
+    const cycle = runTime % RUSH_HOUR_INTERVAL;
+    return cycle < RUSH_HOUR_DURATION;
+};
+
 // ==========================================
 // ITEM TRAITS & PRODUCTS
 // ==========================================

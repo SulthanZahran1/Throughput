@@ -265,7 +265,8 @@ const updateRobotState = (
                     updatedRobot.path = [];
                     updatedRobot.blockedTicks = 0;
                 }
-            } else {
+            } else if (x !== robot.x || y !== robot.y || reached) {
+                // Only reset if we actually made progress to a new cell or reached destination
                 updatedRobot.blockedTicks = 0;
             }
 

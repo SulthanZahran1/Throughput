@@ -176,6 +176,9 @@ Items drift slowly toward I/O ports. If the port is blocked:
 - [x] Robot intention visualization (dotted paths, markers)
 - [x] Smart player movement (avoiding robots)
 - [x] **Route-finding Test Suite**: Automated verification for edge cases (deadlocks, item avoidance, drift).
+- [x] **Juice & Fun Factor**: Floating XP notifications, visceral Order Queue jiggle, and "Level Up" spectacle.
+- [x] **Surge Mechanics**: "Rush Hour" periodic high-intensity events with 2x spawns and 3x XP rewards.
+- [x] **Visual Clarity**: Robot status icons (!, 📦, ...) and blue Conveyor path projections.
 
 **Test question:** Does the system feel reliable and transparent?
 

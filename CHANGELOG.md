@@ -5,8 +5,12 @@ All notable changes to this project will be documented in this file.
 ## [Unreleased]
 
 ### Added
-- **Route-finding Test Suite**: A comprehensive testing harness in `src/engine/routefinding.test.ts` verifying deadlocks, item avoidance, player-robot interaction, and dynamic drift.
-- **Item Avoidance Logic**: Ground items are now treated as weighted soft obstacles in A* pathfinding, so robots naturally path around them.
+- **Floating XP Notifications**: XP gains now float up from the I/O port with a satisfying animation.
+- **Surge Events (Rush Hour)**: Every 3 minutes, the warehouse enters "Rush Hour" (2x order spawn rate, 3x XP reward) with golden ambient lighting and UI alerts.
+- **Visceral Order Radar**: Urgent orders (<10s) now jiggle and pulsate in the queue to create tension.
+- **Robot Status Indicators**: Robots now display floating icons for states like "Blocked" (!), "Carrying" (📦), and "Pathfinding" (...).
+- **Conveyor Projections**: Subtle ghost arrows on the grid show where items will drift once the Conveyor Belt upgrade is active.
+- **Level Up Spectacle**: A flashy "LEVEL UP" banner and particle effects now celebrate every level progression.
 - **A* Pathfinding for Robots**: Robots now use A* search to navigate around obstacles and other robots.
 - **Mobile-Friendly Support**: Game now works on mobile devices with responsive layout and touch controls.
   - **Tap-to-Move**: Touch/click any grid cell to walk there smoothly.
