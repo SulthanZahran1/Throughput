@@ -1,10 +1,9 @@
 import { create } from 'zustand';
 import type { GameState, GridSlot, UpgradeId, Robot } from '../types/game';
-import { GRID_SIZE, IO_PORT, XP_PER_ORDER } from '../constants/config';
+import { GRID_SIZE, IO_PORT } from '../constants/config';
 import { tickGame } from '../engine/simulation';
 import { createRobot } from '../engine/robots';
-import { applyPlayerUpgrades, tryPickupItem } from '../engine/player';
-import { getXpMultiplier } from '../engine/upgrades';
+import { applyPlayerUpgrades } from '../engine/player';
 
 interface GameActions {
     tick: (delta: number) => void;
@@ -79,8 +78,6 @@ export const useGameStore = create<GameState & GameActions>((set) => ({
             return tickGame(state, delta);
         });
     },
-
-},
 
     selectUpgrade: (upgradeId: UpgradeId) => {
         set((state) => {

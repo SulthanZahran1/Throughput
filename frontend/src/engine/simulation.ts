@@ -12,7 +12,6 @@ import {
     HAZARDOUS_ITEM_RADIUS,
     HAZARDOUS_ITEM_SLOWDOWN,
     isRushHour,
-    isRushHour as isRushHourConfig, // Avoid naming conflict if any
     RUSH_HOUR_XP_MULTIPLIER,
     RUSH_HOUR_SPAWN_MULTIPLIER,
 } from '../constants/config';
