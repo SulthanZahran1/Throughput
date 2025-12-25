@@ -23,18 +23,18 @@
 /* Mobile responsive sizing */
 @media (max-width: 768px) {
   :root {
-    --cell-size: min(5.5vw, 28px);
+    --cell-size: min(5.8vw, 32px);
     --grid-gap: 2px;
-    --grid-padding: 4px;
+    --grid-padding: 6px;
   }
 }
 
-/* Extra small screens */
+/* Extra small screens - maximize grid on portrait */
 @media (max-width: 480px) {
   :root {
-    --cell-size: min(5vw, 22px);
-    --grid-gap: 1px;
-    --grid-padding: 2px;
+    --cell-size: min(5.4vw, 24px);
+    --grid-gap: 1.5px;
+    --grid-padding: 4px;
   }
 }
 
@@ -52,22 +52,4 @@ body {
   place-items: center;
   min-width: 320px;
   min-height: 100vh;
-}
-
-/* Landscape mode on mobile - optimize for horizontal layout */
-@media (max-width: 1024px) and (orientation: landscape) {
-  :root {
-    --cell-size: min(4.5vh, 32px);
-    --grid-gap: 2px;
-    --grid-padding: 4px;
-  }
-}
-
-/* Extra small screens in landscape */
-@media (max-height: 480px) and (orientation: landscape) {
-  :root {
-    --cell-size: min(5vh, 28px);
-    --grid-gap: 1px;
-    --grid-padding: 2px;
-  }
 }

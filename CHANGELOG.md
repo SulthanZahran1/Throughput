@@ -12,6 +12,10 @@ All notable changes to this project will be documented in this file.
 - **Conveyor Projections**: Subtle ghost arrows on the grid show where items will drift once the Conveyor Belt upgrade is active.
 - **Level Up Spectacle**: A flashy "LEVEL UP" banner and particle effects now celebrate every level progression.
 - **A* Pathfinding for Robots**: Robots now use A* search to navigate around obstacles and other robots.
+- **Portrait Mobile Optimization**: The game is now primarily optimized for portrait mode on mobile devices.
+  - Removed landscape orientation prompt and rotation requirements.
+  - Adjusted grid and UI layout to maximize vertical space usage on tall screens.
+  - Improved `OrderQueue` and `UpgradeModal` responsiveness for portrait views.
 - **Mobile-Friendly Support**: Game now works on mobile devices with responsive layout and touch controls.
   - **Tap-to-Move**: Touch/click any grid cell to walk there smoothly.
   - **Responsive Grid**: Cell sizes scale based on viewport using CSS custom properties.

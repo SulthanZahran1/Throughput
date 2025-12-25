@@ -1,5 +1,3 @@
-
-import { useState, useEffect } from 'react';
 import { Grid } from './components/game/Grid';
 import { Player } from './components/game/Player';
 import { Item } from './components/game/Item';
@@ -22,10 +20,6 @@ const formatTime = (ms: number): string => {
   return `${minutes}:${seconds.toString().padStart(2, '0')}`;
 };
 
-// Check if device is mobile (touch device with small screen)
-const isMobileDevice = () => {
-  return 'ontouchstart' in window && window.innerWidth < 1024;
-};
 
 function App() {
   const isGameOver = useGameStore(state => state.isGameOver);
@@ -38,24 +32,6 @@ function App() {
   const upgrades = useGameStore(state => state.upgrades);
   const restart = useGameStore(state => state.restart);
 
-  const [showOrientationPrompt, setShowOrientationPrompt] = useState(false);
-
-  // Detect orientation changes on mobile
-  useEffect(() => {
-    const checkOrientation = () => {
-      const isPortrait = window.innerHeight > window.innerWidth;
-      setShowOrientationPrompt(isMobileDevice() && isPortrait);
-    };
-
-    checkOrientation();
-    window.addEventListener('resize', checkOrientation);
-    window.addEventListener('orientationchange', checkOrientation);
-
-    return () => {
-      window.removeEventListener('resize', checkOrientation);
-      window.removeEventListener('orientationchange', checkOrientation);
-    };
-  }, []);
 
   // Pause game when won or game over
   useGameLoop(!isGameOver && !hasWon);
@@ -65,26 +41,9 @@ function App() {
   return (
     <div className={`min-h-screen transition-colors duration-1000 flex items-center justify-center p-2 sm:p-4 md:p-8 ${isRushHour(runTime) ? 'bg-amber-950/20 bg-gray-950' : 'bg-gray-950'
       }`}>
-      {/* Landscape Orientation Prompt for Mobile */}
-      {showOrientationPrompt && (
-        <div className="fixed inset-0 bg-gray-950/95 z-[100] flex flex-col items-center justify-center p-8 text-center">
-          <div className="text-6xl mb-6 animate-bounce">📱</div>
-          <h2 className="text-2xl font-bold text-amber-400 mb-4">Rotate Your Device</h2>
-          <p className="text-gray-300 mb-6 max-w-xs">
-            For the best gameplay experience, please rotate your device to landscape mode.
-          </p>
-          <div className="text-4xl animate-pulse">↻</div>
-          <button
-            onClick={() => setShowOrientationPrompt(false)}
-            className="mt-8 px-4 py-2 text-sm text-gray-400 underline"
-          >
-            Continue in portrait anyway
-          </button>
-        </div>
-      )}
 
       {/* Stacked layout on mobile, side-by-side on desktop */}
-      <div className="flex flex-col md:flex-row gap-2 sm:gap-4 md:gap-8 items-center">
+      <div className="flex flex-col lg:flex-row gap-4 sm:gap-6 md:gap-8 items-center lg:items-start justify-center w-full max-w-6xl mx-auto">
         <div className="relative">
           <Grid>
             {/* Game Entities rendered inside Grid using CSS Grid positioning */}

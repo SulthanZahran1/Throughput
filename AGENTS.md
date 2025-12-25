@@ -202,7 +202,7 @@ function tick(delta: number) {
 | Decision | Choice |
 |----------|--------|
 | View | Top-down |
-| Mobile controls | Tap-to-Move + WASD |
+| Mobile controls | Tap-to-Move + WASD (Portrait Optimized) |
 | Player-robot collision | Yes (player blocked by robots) |
 | Item types | Colors only (red, blue, green) |
 

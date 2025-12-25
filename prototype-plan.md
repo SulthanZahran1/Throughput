@@ -210,7 +210,7 @@ The prototype works if:
 | Question | Answer |
 |----------|--------|
 | View | Top-down |
-| Mobile Friendly | Yes (Tap-to-move + Responsive) |
+| Mobile Friendly | Yes (Portrait Optimized) |
 | Items | Colors only (red, blue, green) |
 
 ---

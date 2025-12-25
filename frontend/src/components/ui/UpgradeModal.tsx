@@ -45,7 +45,7 @@ export const UpgradeModal = () => {
                     <motion.div
                         initial={{ scale: 0.8, y: 20 }}
                         animate={{ scale: 1, y: 0 }}
-                        className="bg-gray-900 p-4 sm:p-8 rounded-2xl border border-gray-700 max-w-2xl w-full max-h-[90vh] overflow-y-auto relative"
+                        className="bg-gray-900 p-4 sm:p-8 rounded-2xl border border-gray-700 max-w-4xl w-full max-h-[90vh] overflow-y-auto relative shadow-[0_0_50px_rgba(0,0,0,0.5)]"
                     >
                         <motion.div
                             initial={{ y: -50, opacity: 0 }}
