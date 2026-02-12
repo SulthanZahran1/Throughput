@@ -1,0 +1,85 @@
+{
+    "name": "Demo Warehouse",
+    "nodes": [
+        {
+            "id": "START",
+            "position": [
+                100,
+                100
+            ]
+        },
+        {
+            "id": "A1",
+            "position": [
+                300,
+                100
+            ]
+        },
+        {
+            "id": "A2",
+            "position": [
+                500,
+                100
+            ]
+        },
+        {
+            "id": "B1",
+            "position": [
+                300,
+                300
+            ]
+        },
+        {
+            "id": "B2",
+            "position": [
+                500,
+                300
+            ]
+        },
+        {
+            "id": "CHARGE",
+            "position": [
+                700,
+                200
+            ]
+        }
+    ],
+    "edges": [
+        {
+            "from": "START",
+            "to": "A1",
+            "cost": 1.0,
+            "bidirectional": true
+        },
+        {
+            "from": "A1",
+            "to": "A2",
+            "cost": 1.0,
+            "bidirectional": true
+        },
+        {
+            "from": "A1",
+            "to": "B1",
+            "cost": 1.0,
+            "bidirectional": true
+        },
+        {
+            "from": "A2",
+            "to": "B2",
+            "cost": 1.0,
+            "bidirectional": true
+        },
+        {
+            "from": "B1",
+            "to": "B2",
+            "cost": 1.0,
+            "bidirectional": true
+        },
+        {
+            "from": "B2",
+            "to": "CHARGE",
+            "cost": 1.0,
+            "bidirectional": true
+        }
+    ]
+}

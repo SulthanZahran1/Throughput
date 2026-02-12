@@ -1,11 +1,12 @@
 import type { GameState, Player, Robot } from '../types/game';
 import { updateOrders, spawnOrderWithItem } from './orders';
 import { updateRobots } from './robots';
+import './astar';
 import {
     XP_PER_ORDER,
     XP_PER_LEVEL,
     TARGET_RUN_TIME,
-    IO_PORT,
+    getIOPort,
     getOrderSpawnRate,
     PLAYER_SPEED,
     HEAVY_ITEM_SLOWDOWN,
@@ -14,6 +15,9 @@ import {
     isRushHour,
     RUSH_HOUR_XP_MULTIPLIER,
     RUSH_HOUR_SPAWN_MULTIPLIER,
+    ORDER_THROTTLE_THRESHOLD,
+    MAP_SCALE_INTERVAL,
+    MAX_GRID_SIZE,
 } from '../constants/config';
 import {
     getRandomUpgrades,
@@ -25,7 +29,7 @@ import {
     getOverloadMultiplier
 } from './upgrades';
 import { tryPickupItem } from './player';
-import { findPath } from './astar';
+import { routefindingPortal } from './routefinding';
 import { buildOccupancySets, moveAlongPath } from './robots';
 
 /**
@@ -59,6 +63,7 @@ const updatePlayerMovement = (
     delta: number,
     items: GameState['items'],
     grid: GameState['grid'],
+    gridSize: number,
     orders: GameState['orders'],
     upgrades: GameState['upgrades'],
     robots: Robot[],
@@ -137,11 +142,14 @@ const updatePlayerMovement = (
     let currentPath = player.path || [];
     if (currentPath.length === 0) {
         // Player treats robots as soft obstacles (high cost) to avoid being completely stuck
-        const path = findPath(
+        const path = routefindingPortal.findPath(
             { x: player.x, y: player.y },
             { x: player.targetX, y: player.targetY },
-            new Set(), // No "hard" obstacles for player pathfinding (they wait/reroute)
-            robotCells
+            {
+                softObstacles: robotCells,
+                gridWidth: gridSize,
+                gridHeight: gridSize
+            }
         );
         if (path) {
             currentPath = path;
@@ -197,9 +205,10 @@ const updatePlayerMovement = (
     }
 
     // Check if player is at I/O port with an item (deliver)
+    const ioPort = getIOPort(gridSize);
     if (updatedPlayer.carrying &&
-        updatedPlayer.x === IO_PORT.x &&
-        updatedPlayer.y === IO_PORT.y) {
+        updatedPlayer.x === ioPort.x &&
+        updatedPlayer.y === ioPort.y) {
 
         const carriedType = updatedPlayer.carrying.type;
         const matchingOrder = updatedOrders.find(o => o.type === carriedType);
@@ -215,7 +224,7 @@ const updatePlayerMovement = (
 
             xpGain = Math.floor(xp);
             // Trigger floating XP notification
-            addFloatingXp?.(xpGain, IO_PORT.x, IO_PORT.y);
+            addFloatingXp?.(xpGain, ioPort.x, ioPort.y);
 
             updatedPlayer = { ...updatedPlayer, carrying: null };
             updatedOrders = updatedOrders.filter(o => o.id !== matchingOrder.id);
@@ -237,11 +246,31 @@ export const tickGame = (state: GameState, delta: number): GameState => {
     // Update Time
     newState.runTime += delta;
 
+    // Map Scaling: Every 3 minutes, expand map by 2 cells
+    const oldScaleCount = Math.max(0, Math.floor((state.runTime - delta) / MAP_SCALE_INTERVAL));
+    const newScaleCount = Math.floor(state.runTime / MAP_SCALE_INTERVAL);
+    if (newScaleCount > oldScaleCount && newState.gridSize < MAX_GRID_SIZE) {
+        newState.gridSize = Math.min(MAX_GRID_SIZE, newState.gridSize + 2);
+        // We'll let the React layer handle grid array regeneration via a separate action if needed,
+        // or we could do it here. For now, we update the size and the Grid component will re-render.
+    }
+
     // Update Orders (with time extension from upgrades)
     const orderTimeExtension = getOrderTimeExtension(state.upgrades);
-    const { activeOrders, failedCount, failedItemIds } = updateOrders(newState.orders, delta, newState.items);
+    // Track items being carried for baseline recycling
+    const carriedItemIds = new Set<string>();
+    if (newState.player.carrying) {
+        carriedItemIds.add(newState.player.carrying.id);
+    }
+    newState.robots.forEach(robot => {
+        robot.carryingItems.forEach(item => carriedItemIds.add(item.id));
+    });
+
+    // Update Orders (with time extension from upgrades)
+    const { activeOrders, failedCount, failedItemIds, expiredXp } = updateOrders(newState.orders, delta, newState.items, carriedItemIds);
     newState.orders = activeOrders;
     newState.failedOrders += failedCount;
+    newState.xp += expiredXp; // Baseline Recycling: Get some XP even on failure
 
     // Handle items associated with failed orders
     if (failedItemIds.length > 0) {
@@ -306,30 +335,43 @@ export const tickGame = (state: GameState, delta: number): GameState => {
     }
 
     // Spawn Orders with dynamic rate (ramps up over time)
-    // Each order spawns with its paired item (1:1 relationship)
-    let currentSpawnRate = getOrderSpawnRate(newState.runTime);
+    // Order Throttling: Pause if 4+ orders are active
+    if (newState.orders.length < ORDER_THROTTLE_THRESHOLD) {
+        let currentSpawnRate = getOrderSpawnRate(newState.runTime);
 
-    // Surge: Rush Hour Spawning (faster)
-    if (isRushHour(newState.runTime)) {
-        currentSpawnRate /= RUSH_HOUR_SPAWN_MULTIPLIER;
+        // Surge: Rush Hour Spawning (faster)
+        if (isRushHour(newState.runTime)) {
+            currentSpawnRate /= RUSH_HOUR_SPAWN_MULTIPLIER;
+        }
+
+        const lastSpawnTime = Math.floor((state.runTime - delta) / currentSpawnRate);
+        const currentSpawnTime = Math.floor(state.runTime / currentSpawnRate);
+
+        if (currentSpawnTime > lastSpawnTime) {
+            const { order, item } = spawnOrderWithItem(newState.items, newState.gridSize, orderTimeExtension);
+            newState.orders = [...newState.orders, order];
+            newState.items = [...newState.items, item];
+        }
     }
 
-    const lastSpawnTime = Math.floor((state.runTime - delta) / currentSpawnRate);
-    const currentSpawnTime = Math.floor(state.runTime / currentSpawnRate);
-
-    if (currentSpawnTime > lastSpawnTime) {
-        const { order, item } = spawnOrderWithItem(newState.items, newState.runTime, orderTimeExtension);
-        newState.orders = [...newState.orders, order];
-        newState.items = [...newState.items, item];
-    }
-
-    // Conveyor Belt: Move items toward I/O port
+    // Conveyor Belt: Items drift TOWARD center from all directions
     const conveyorSpeed = getConveyorSpeed(state.upgrades);
     if (conveyorSpeed > 0) {
-        newState.items = newState.items.map(item => ({
-            ...item,
-            x: Math.max(IO_PORT.x, item.x - conveyorSpeed * (delta / 1000))
-        }));
+        const ioPort = getIOPort(newState.gridSize);
+        newState.items = newState.items.map(item => {
+            const dx = ioPort.x - item.x;
+            const dy = ioPort.y - item.y;
+            const dist = Math.sqrt(dx * dx + dy * dy);
+
+            if (dist < 0.1) return item; // Already at center
+
+            const moveStep = conveyorSpeed * (delta / 1000);
+            return {
+                ...item,
+                x: item.x + (dx / dist) * moveStep,
+                y: item.y + (dy / dist) * moveStep
+            };
+        });
     }
 
     // Update Player (tap-to-move grid-aligned movement)
@@ -338,6 +380,7 @@ export const tickGame = (state: GameState, delta: number): GameState => {
         delta,
         newState.items,
         newState.grid,
+        newState.gridSize,
         newState.orders,
         newState.upgrades,
         newState.robots,
@@ -358,7 +401,8 @@ export const tickGame = (state: GameState, delta: number): GameState => {
         newState.items,
         delta,
         state.upgrades,
-        newState.player
+        newState.player,
+        newState.gridSize
     );
 
     newState.robots = robotResult.robots;
@@ -366,6 +410,7 @@ export const tickGame = (state: GameState, delta: number): GameState => {
     newState.orders = robotResult.orders;
 
     // Grant XP for completed orders (with multiplier)
+    const ioPort = getIOPort(newState.gridSize);
     if (robotResult.completedOrders.length > 0) {
         const xpMultiplier = getXpMultiplier(state.upgrades);
         let xpPerOrder = XP_PER_ORDER * xpMultiplier;
@@ -380,7 +425,7 @@ export const tickGame = (state: GameState, delta: number): GameState => {
         newState.ordersCompleted += robotResult.completedOrders.length;
 
         // Trigger floating XP notification(s) at I/O port
-        (newState as any).addFloatingXp?.(xpGain, IO_PORT.x, IO_PORT.y);
+        (newState as any).addFloatingXp?.(xpGain, ioPort.x, ioPort.y);
     }
 
     // Check for level up
@@ -388,4 +433,3 @@ export const tickGame = (state: GameState, delta: number): GameState => {
 
     return newState;
 };
-

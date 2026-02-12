@@ -1,11 +1,11 @@
 import { useEffect, useRef } from 'react';
 import { useGameStore } from '../store/gameStore';
-import { GRID_SIZE } from '../constants/config';
 
 const SWIPE_THRESHOLD = 30; // Minimum pixels to register a swipe
 
 export const useSwipe = () => {
     const player = useGameStore(state => state.player);
+    const gridSize = useGameStore(state => state.gridSize);
     const setPlayerTarget = useGameStore(state => state.setPlayerTarget);
     const isGameOver = useGameStore(state => state.isGameOver);
     const isSelectingUpgrade = useGameStore(state => state.isSelectingUpgrade);
@@ -52,7 +52,7 @@ export const useSwipe = () => {
                 // Horizontal swipe
                 if (deltaX > 0) {
                     // Swipe right
-                    targetX = Math.min(GRID_SIZE - 1, player.x + 1);
+                    targetX = Math.min(gridSize - 1, player.x + 1);
                 } else {
                     // Swipe left
                     targetX = Math.max(0, player.x - 1);
@@ -61,7 +61,7 @@ export const useSwipe = () => {
                 // Vertical swipe
                 if (deltaY > 0) {
                     // Swipe down
-                    targetY = Math.min(GRID_SIZE - 1, player.y + 1);
+                    targetY = Math.min(gridSize - 1, player.y + 1);
                 } else {
                     // Swipe up
                     targetY = Math.max(0, player.y - 1);
@@ -85,5 +85,6 @@ export const useSwipe = () => {
             window.removeEventListener('touchend', handleTouchEnd);
             window.removeEventListener('touchcancel', handleTouchCancel);
         };
-    }, [player.x, player.y, setPlayerTarget, isGameOver, isSelectingUpgrade]);
+    }, [player.x, player.y, setPlayerTarget, isGameOver, isSelectingUpgrade, gridSize]);
 };
+

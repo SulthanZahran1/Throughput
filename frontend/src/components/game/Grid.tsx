@@ -1,6 +1,6 @@
 import React from 'react';
 import { useGameStore } from '../../store/gameStore';
-import { GRID_SIZE, IO_PORT } from '../../constants/config';
+import { getIOPort } from '../../constants/config';
 import { RobotPaths } from './RobotPaths';
 import clsx from 'clsx';
 import * as Icons from 'lucide-react';
@@ -41,18 +41,36 @@ export const GridEntity: React.FC<GridEntityProps> = ({ x, y, children, classNam
 
 const ConveyorProjections: React.FC = () => {
     const upgrades = useGameStore(state => state.upgrades);
+    const gridSize = useGameStore(state => state.gridSize);
     const isConveyorActive = upgrades.includes('conveyor_belt');
 
     if (!isConveyorActive) return null;
 
+    const ioPort = getIOPort(gridSize);
+
     return (
         <div className="absolute inset-0 pointer-events-none opacity-20">
-            {Array.from({ length: GRID_SIZE }).map((_, y) => (
-                Array.from({ length: GRID_SIZE }).map((_, x) => {
-                    if (x === IO_PORT.x && y === IO_PORT.y) return null;
+            {Array.from({ length: gridSize }).map((_, y) => (
+                Array.from({ length: gridSize }).map((_, x) => {
+                    if (x === ioPort.x && y === ioPort.y) return null;
+
+                    const dx = ioPort.x - x;
+                    const dy = ioPort.y - y;
+
+                    let rotation = 0;
+                    if (Math.abs(dx) > Math.abs(dy)) {
+                        rotation = dx > 0 ? 0 : 180;
+                    } else {
+                        rotation = dy > 0 ? -90 : 90;
+                    }
+
                     return (
                         <GridEntity key={`conveyor-${x}-${y}`} x={x} y={y}>
-                            <Icons.ChevronLeft size="60%" className="text-blue-400" />
+                            <Icons.ChevronRight
+                                size="60%"
+                                className="text-blue-400"
+                                style={{ transform: `rotate(${rotation}deg)` }}
+                            />
                         </GridEntity>
                     );
                 })
@@ -63,18 +81,21 @@ const ConveyorProjections: React.FC = () => {
 
 export const Grid: React.FC<GridProps> = ({ children }) => {
     const grid = useGameStore(state => state.grid);
+    const gridSize = useGameStore(state => state.gridSize);
     const setPlayerTarget = useGameStore(state => state.setPlayerTarget);
 
     const handleCellClick = (x: number, y: number) => {
         setPlayerTarget(x, y);
     };
 
+    const ioPort = getIOPort(gridSize);
+
     return (
         <div
             className="grid bg-gray-800 rounded-lg relative"
             style={{
-                gridTemplateColumns: `repeat(${GRID_SIZE}, var(--cell-size))`,
-                gridTemplateRows: `repeat(${GRID_SIZE}, var(--cell-size))`,
+                gridTemplateColumns: `repeat(${gridSize}, var(--cell-size))`,
+                gridTemplateRows: `repeat(${gridSize}, var(--cell-size))`,
                 gap: 'var(--grid-gap)',
                 padding: 'var(--grid-padding)',
                 width: 'fit-content'
@@ -83,7 +104,7 @@ export const Grid: React.FC<GridProps> = ({ children }) => {
             {/* Grid cells */}
             {grid.map((row, y) => (
                 row.map((_slot, x) => {
-                    const isIOPort = x === IO_PORT.x && y === IO_PORT.y;
+                    const isIOPort = x === ioPort.x && y === ioPort.y;
                     return (
                         <div
                             key={`cell-${x}-${y}`}
@@ -120,3 +141,4 @@ export const Grid: React.FC<GridProps> = ({ children }) => {
         </div>
     );
 };
+

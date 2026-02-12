@@ -14,7 +14,7 @@ export const OrderQueue: React.FC = () => {
     const radarActive = hasOrderRadar(upgrades);
 
     return (
-        <div className="flex flex-col gap-1.5 sm:gap-2 w-full lg:w-72 max-w-sm p-3 sm:p-4 bg-gray-900 rounded-lg border border-gray-800 max-h-64 sm:max-h-80 lg:max-h-none overflow-y-auto shadow-2xl">
+        <div className="flex flex-col gap-1 sm:gap-2 w-full lg:w-80 p-2 sm:p-4 bg-gray-900/60 backdrop-blur-md rounded-lg border border-gray-800 max-h-[30vh] sm:max-h-[40vh] lg:max-h-full overflow-y-auto shadow-2xl transition-all flex-1 lg:flex-none">
             <h2 className="text-sm sm:text-lg font-bold text-gray-100">Orders</h2>
             <div className="text-xs sm:text-sm text-red-400 mb-1 sm:mb-2">Failed: {failedOrders} / 5</div>
 

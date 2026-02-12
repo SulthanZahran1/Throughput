@@ -95,6 +95,7 @@ export interface GameState {
     items: Item[]; // Items on the ground (not in slots)
     orders: Order[];
     robots: Robot[];
+    gridSize: number;
 
     // Progression
     xp: number;

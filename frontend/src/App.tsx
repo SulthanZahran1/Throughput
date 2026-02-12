@@ -39,12 +39,12 @@ function App() {
   useSwipe();
 
   return (
-    <div className={`min-h-screen transition-colors duration-1000 flex items-center justify-center p-2 sm:p-4 md:p-8 ${isRushHour(runTime) ? 'bg-amber-950/20 bg-gray-950' : 'bg-gray-950'
+    <div className={`min-h-[100dvh] transition-colors duration-1000 flex items-center justify-center p-1 sm:p-4 md:p-8 ${isRushHour(runTime) ? 'bg-amber-950/20 bg-gray-950' : 'bg-gray-950'
       }`}>
 
-      {/* Stacked layout on mobile, side-by-side on desktop */}
-      <div className="flex flex-col lg:flex-row gap-4 sm:gap-6 md:gap-8 items-center lg:items-start justify-center w-full max-w-6xl mx-auto">
-        <div className="relative">
+      {/* Fluid layout that expands to fill viewport */}
+      <div className="flex flex-col lg:flex-row gap-4 sm:gap-6 md:gap-8 items-center lg:items-start justify-center w-full min-h-full transition-all">
+        <div className="relative flex-none">
           <Grid>
             {/* Game Entities rendered inside Grid using CSS Grid positioning */}
             <Player />

@@ -1,5 +1,5 @@
 import type { Robot, GridSlot, Item, Order, RobotState, UpgradeId, Player } from '../types/game';
-import { IO_PORT, ROBOT_SPEED, HEAVY_ITEM_SLOWDOWN, HAZARDOUS_ITEM_RADIUS, HAZARDOUS_ITEM_SLOWDOWN, ROBOT_BLOCKED_THRESHOLD } from '../constants/config';
+import { getIOPort, ROBOT_SPEED, HEAVY_ITEM_SLOWDOWN, HAZARDOUS_ITEM_RADIUS, HAZARDOUS_ITEM_SLOWDOWN, ROBOT_BLOCKED_THRESHOLD } from '../constants/config';
 import { getRobotCollisionSlowdown } from './collision';
 import {
     getRobotSpeedMultiplier,
@@ -9,7 +9,7 @@ import {
     hasLeadSiding,
     getOverloadMultiplier
 } from './upgrades';
-import { findPath } from './astar';
+import { routefindingPortal } from './routefinding';
 
 /**
  * Build sets of occupied cells from robot, player, and item positions
@@ -154,10 +154,12 @@ const updateRobotState = (
     hardObstacles: Set<string>,
     softObstacles: Set<string>,
     allRobots: Robot[],
-    upgrades: UpgradeId[]
+    upgrades: UpgradeId[],
+    gridSize: number
 ): { robot: Robot; items: Item[]; orders: Order[]; completedOrders: Order[] } => {
     let totalSpeed = ROBOT_SPEED * robot.speedMultiplier * collisionSlowdown * upgradeSpeedMultiplier * getOverloadMultiplier(upgrades);
     const pickupRadius = upgrades.filter(u => u === 'longer_arms').length;
+    const ioPort = getIOPort(gridSize);
 
     // Stun logic: If robot is stunned (rebooting), it can't move or act
     if (robot.stunTicks > 0) {
@@ -258,7 +260,16 @@ const updateRobotState = (
 
             // Pathfinding: If we don't have a path or it's empty, find one
             if (!robot.path || robot.path.length === 0) {
-                const path = findPath({ x: robot.x, y: robot.y }, robot.target, hardObstacles, softObstacles);
+                const path = routefindingPortal.findPath(
+                    { x: robot.x, y: robot.y },
+                    robot.target,
+                    {
+                        hardObstacles,
+                        softObstacles,
+                        gridWidth: gridSize,
+                        gridHeight: gridSize
+                    }
+                );
                 if (path) {
                     updatedRobot.path = path;
                     updatedRobot.blockedTicks = 0;
@@ -356,7 +367,7 @@ const updateRobotState = (
                     ...updatedRobot,
                     carryingItems: newCarryingItems,
                     state: 'moving_to_port' as RobotState,
-                    target: { x: IO_PORT.x, y: IO_PORT.y },
+                    target: { x: ioPort.x, y: ioPort.y },
                     path: [], // Let A* find the path next tick
                     blockedTicks: 0,
                 };
@@ -381,7 +392,16 @@ const updateRobotState = (
 
             // Pathfinding: If we don't have a path or it's empty, find one
             if (!robot.path || robot.path.length === 0) {
-                const path = findPath({ x: robot.x, y: robot.y }, robot.target, hardObstacles, softObstacles);
+                const path = routefindingPortal.findPath(
+                    { x: robot.x, y: robot.y },
+                    robot.target,
+                    {
+                        hardObstacles,
+                        softObstacles,
+                        gridWidth: gridSize,
+                        gridHeight: gridSize
+                    }
+                );
                 if (path) {
                     updatedRobot.path = path;
                     updatedRobot.blockedTicks = 0;
@@ -462,7 +482,8 @@ export const updateRobots = (
     items: Item[],
     delta: number,
     upgrades: UpgradeId[],
-    player: Player
+    player: Player,
+    gridSize: number
 ): { robots: Robot[]; items: Item[]; orders: Order[]; completedOrders: Order[] } => {
     const upgradeSpeedMultiplier = getRobotSpeedMultiplier(upgrades);
     const priorityOrdersActive = hasPriorityOrders(upgrades);
@@ -494,7 +515,8 @@ export const updateRobots = (
             hard,
             soft,
             robots,
-            upgrades
+            upgrades,
+            gridSize
         );
 
         // Add robot's new position to soft obstacle set
@@ -519,11 +541,12 @@ export const updateRobots = (
 /**
  * Create a new robot at the I/O port
  */
-export const createRobot = (existingRobots: Robot[]): Robot => {
+export const createRobot = (existingRobots: Robot[], gridSize: number): Robot => {
+    const ioPort = getIOPort(gridSize);
     return {
         id: `robot-${existingRobots.length + 1}-${Date.now()}`,
-        x: IO_PORT.x + 1,
-        y: IO_PORT.y,
+        x: ioPort.x + 1,
+        y: ioPort.y,
         carryingItems: [],
         state: 'idle',
         target: null,
@@ -534,4 +557,5 @@ export const createRobot = (existingRobots: Robot[]): Robot => {
         stunTicks: 0,
     };
 };
+
 

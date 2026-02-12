@@ -1,9 +1,5 @@
-import { GRID_SIZE } from '../constants/config';
-
-export interface Point {
-    x: number;
-    y: number;
-}
+import type { IRouteFinder, Point, RouteOptions, RouteResult } from './routefinding';
+import { routefindingPortal } from './routefinding';
 
 interface Node extends Point {
     g: number; // Cost from start
@@ -68,112 +64,165 @@ class PriorityQueue<T> {
     }
 }
 
+export class AStarRouteFinder implements IRouteFinder {
+    name = 'astar';
+
+    findPath(start: Point, target: Point, options: RouteOptions): RouteResult {
+        const startTime = performance.now();
+        let nodesVisited = 0;
+
+        const {
+            hardObstacles = new Set(),
+            softObstacles = new Set(),
+            gridWidth,
+            gridHeight
+        } = options;
+
+        // If start is target, return current point
+        if (start.x === target.x && start.y === target.y) {
+            return {
+                path: [start],
+                telemetry: {
+                    nodes_visited: 0,
+                    execution_time_ms: performance.now() - startTime,
+                    path_length: 1,
+                    success: true
+                }
+            };
+        }
+
+        const openQueue = new PriorityQueue<Node>();
+        const openMap = new Map<string, Node>();
+        const closedList = new Set<string>();
+
+        const startNode: Node = {
+            ...start,
+            g: 0,
+            h: Math.abs(Math.round(target.x) - start.x) + Math.abs(Math.round(target.y) - start.y),
+            f: 0,
+            parent: null
+        };
+        startNode.f = startNode.g + startNode.h;
+
+        openQueue.push(startNode, startNode.f);
+        openMap.set(`${startNode.x},${startNode.y}`, startNode);
+
+        while (openQueue.size() > 0) {
+            const currentNode = openQueue.pop()!;
+            const currentKey = `${currentNode.x},${currentNode.y}`;
+            nodesVisited++;
+
+            // If we already found a better path to this node, skip it
+            const mappedNode = openMap.get(currentKey);
+            if (mappedNode && mappedNode.g < currentNode.g) {
+                continue;
+            }
+
+            // Found the target!
+            // Robustness: Round goal coordinates to handle fractional targets (conveyors)
+            if (currentNode.x === Math.round(target.x) && currentNode.y === Math.round(target.y)) {
+                const path: Point[] = [];
+                let temp: Node | null = currentNode;
+                while (temp !== null) {
+                    path.push({ x: temp.x, y: temp.y });
+                    temp = temp.parent;
+                }
+                const finalPath = path.reverse();
+                return {
+                    path: finalPath,
+                    telemetry: {
+                        nodes_visited: nodesVisited,
+                        execution_time_ms: performance.now() - startTime,
+                        path_length: finalPath.length,
+                        success: true
+                    }
+                };
+            }
+
+            openMap.delete(currentKey);
+            closedList.add(currentKey);
+
+            // Check neighbors (4-way cardinal movement)
+            const neighbors = [
+                { x: currentNode.x + 1, y: currentNode.y },
+                { x: currentNode.x - 1, y: currentNode.y },
+                { x: currentNode.x, y: currentNode.y + 1 },
+                { x: currentNode.x, y: currentNode.y - 1 }
+            ];
+
+            for (const neighbor of neighbors) {
+                const neighborKey = `${neighbor.x},${neighbor.y}`;
+
+                // Valid bounds?
+                if (neighbor.x < 0 || neighbor.x >= gridWidth || neighbor.y < 0 || neighbor.y >= gridHeight) {
+                    continue;
+                }
+
+                // Hard Obstacles? (Allow target cell even if hard-blocked, e.g. robot standing on port)
+                const isTarget = neighbor.x === target.x && neighbor.y === target.y;
+                if (hardObstacles.has(neighborKey) && !isTarget) {
+                    continue;
+                }
+
+                // In closed list?
+                if (closedList.has(neighborKey)) {
+                    continue;
+                }
+
+                // Weighted cost: 1 for empty, 5 for soft obstacles (like other robots)
+                // This encourages robots to path around each other, but path THROUGH if blocked.
+                const traversalCost = softObstacles.has(neighborKey) ? 5 : 1;
+                const gScore = currentNode.g + traversalCost;
+
+                const existingNode = openMap.get(neighborKey);
+
+                if (!existingNode || gScore < existingNode.g) {
+                    const h = Math.abs(Math.round(target.x) - neighbor.x) + Math.abs(Math.round(target.y) - neighbor.y);
+                    const newNode: Node = {
+                        ...neighbor,
+                        g: gScore,
+                        h,
+                        f: gScore + h,
+                        parent: currentNode
+                    };
+                    openMap.set(neighborKey, newNode);
+                    openQueue.push(newNode, newNode.f);
+                }
+            }
+        }
+
+        return {
+            path: null,
+            telemetry: {
+                nodes_visited: nodesVisited,
+                execution_time_ms: performance.now() - startTime,
+                path_length: 0,
+                success: false
+            }
+        };
+    }
+}
+
+// Register with the portal
+routefindingPortal.register(new AStarRouteFinder());
+
 /**
- * A* Pathfinding algorithm
- * Returns an array of points from start to target, or null if no path found.
+ * Legacy export for backward compatibility during transition
+ * WARNING: This now requires explicit width/height or will fail
  */
 export const findPath = (
     start: Point,
     target: Point,
     hardObstacles: Set<string> = new Set(),
     softObstacles: Set<string> = new Set(),
-    gridWidth: number = GRID_SIZE,
-    gridHeight: number = GRID_SIZE
+    gridWidth: number,
+    gridHeight: number
 ): Point[] | null => {
-    // If start is target, return current point
-    if (start.x === target.x && start.y === target.y) {
-        return [start];
-    }
-
-    const openQueue = new PriorityQueue<Node>();
-    const openMap = new Map<string, Node>();
-    const closedList = new Set<string>();
-
-    const startNode: Node = {
-        ...start,
-        g: 0,
-        h: Math.abs(Math.round(target.x) - start.x) + Math.abs(Math.round(target.y) - start.y),
-        f: 0,
-        parent: null
-    };
-    startNode.f = startNode.g + startNode.h;
-
-    openQueue.push(startNode, startNode.f);
-    openMap.set(`${startNode.x},${startNode.y}`, startNode);
-
-    while (openQueue.size() > 0) {
-        const currentNode = openQueue.pop()!;
-        const currentKey = `${currentNode.x},${currentNode.y}`;
-
-        // If we already found a better path to this node, skip it
-        const mappedNode = openMap.get(currentKey);
-        if (mappedNode && mappedNode.g < currentNode.g) {
-            continue;
-        }
-
-        // Found the target!
-        // Robustness: Round goal coordinates to handle fractional targets (conveyors)
-        if (currentNode.x === Math.round(target.x) && currentNode.y === Math.round(target.y)) {
-            const path: Point[] = [];
-            let temp: Node | null = currentNode;
-            while (temp !== null) {
-                path.push({ x: temp.x, y: temp.y });
-                temp = temp.parent;
-            }
-            return path.reverse();
-        }
-
-        openMap.delete(currentKey);
-        closedList.add(currentKey);
-
-        // Check neighbors (4-way cardinal movement)
-        const neighbors = [
-            { x: currentNode.x + 1, y: currentNode.y },
-            { x: currentNode.x - 1, y: currentNode.y },
-            { x: currentNode.x, y: currentNode.y + 1 },
-            { x: currentNode.x, y: currentNode.y - 1 }
-        ];
-
-        for (const neighbor of neighbors) {
-            const neighborKey = `${neighbor.x},${neighbor.y}`;
-
-            // Valid bounds?
-            if (neighbor.x < 0 || neighbor.x >= gridWidth || neighbor.y < 0 || neighbor.y >= gridHeight) {
-                continue;
-            }
-
-            // Hard Obstacles? (Allow target cell even if hard-blocked, e.g. robot standing on port)
-            const isTarget = neighbor.x === target.x && neighbor.y === target.y;
-            if (hardObstacles.has(neighborKey) && !isTarget) {
-                continue;
-            }
-
-            // In closed list?
-            if (closedList.has(neighborKey)) {
-                continue;
-            }
-
-            // Weighted cost: 1 for empty, 5 for soft obstacles (like other robots)
-            // This encourages robots to path around each other, but path THROUGH if blocked.
-            const traversalCost = softObstacles.has(neighborKey) ? 5 : 1;
-            const gScore = currentNode.g + traversalCost;
-
-            const existingNode = openMap.get(neighborKey);
-
-            if (!existingNode || gScore < existingNode.g) {
-                const h = Math.abs(Math.round(target.x) - neighbor.x) + Math.abs(Math.round(target.y) - neighbor.y);
-                const newNode: Node = {
-                    ...neighbor,
-                    g: gScore,
-                    h,
-                    f: gScore + h,
-                    parent: currentNode
-                };
-                openMap.set(neighborKey, newNode);
-                openQueue.push(newNode, newNode.f);
-            }
-        }
-    }
-
-    return null; // No path found
+    return routefindingPortal.findPath(start, target, {
+        hardObstacles,
+        softObstacles,
+        gridWidth,
+        gridHeight
+    });
 };
+

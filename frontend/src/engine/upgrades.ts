@@ -128,7 +128,7 @@ export const countUpgrade = (upgrades: UpgradeId[], upgradeId: UpgradeId): numbe
  */
 export const getPlayerSpeedMultiplier = (upgrades: UpgradeId[]): number => {
     const speedBootsCount = countUpgrade(upgrades, 'speed_boots');
-    return 1 + (speedBootsCount * 0.30); // +30% per Speed Boots
+    return 1 + (speedBootsCount * 0.40); // +40% per Speed Boots
 };
 
 /**
@@ -136,7 +136,7 @@ export const getPlayerSpeedMultiplier = (upgrades: UpgradeId[]): number => {
  */
 export const getRobotSpeedMultiplier = (upgrades: UpgradeId[]): number => {
     const fasterRobotsCount = countUpgrade(upgrades, 'faster_robots');
-    return 1 + (fasterRobotsCount * 0.25); // +25% per Faster Robots
+    return 1 + (fasterRobotsCount * 0.35); // +35% per Faster Robots
 };
 
 /**

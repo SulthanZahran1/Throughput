@@ -1,9 +1,9 @@
 import { useEffect } from 'react';
 import { useGameStore } from '../store/gameStore';
-import { GRID_SIZE } from '../constants/config';
 
 export const useKeyboard = () => {
     const player = useGameStore(state => state.player);
+    const gridSize = useGameStore(state => state.gridSize);
     const setPlayerTarget = useGameStore(state => state.setPlayerTarget);
     const isGameOver = useGameStore(state => state.isGameOver);
     const isSelectingUpgrade = useGameStore(state => state.isSelectingUpgrade);
@@ -23,7 +23,7 @@ export const useKeyboard = () => {
                     break;
                 case 's':
                 case 'ArrowDown':
-                    targetY = Math.min(GRID_SIZE - 1, player.y + 1);
+                    targetY = Math.min(gridSize - 1, player.y + 1);
                     targetX = player.x;
                     break;
                 case 'a':
@@ -33,7 +33,7 @@ export const useKeyboard = () => {
                     break;
                 case 'd':
                 case 'ArrowRight':
-                    targetX = Math.min(GRID_SIZE - 1, player.x + 1);
+                    targetX = Math.min(gridSize - 1, player.x + 1);
                     targetY = player.y;
                     break;
                 default:
@@ -45,5 +45,6 @@ export const useKeyboard = () => {
 
         window.addEventListener('keydown', handleKeyDown);
         return () => window.removeEventListener('keydown', handleKeyDown);
-    }, [player.x, player.y, player.targetX, player.targetY, setPlayerTarget, isGameOver, isSelectingUpgrade]);
+    }, [player.x, player.y, player.targetX, player.targetY, setPlayerTarget, isGameOver, isSelectingUpgrade, gridSize]);
 };
+

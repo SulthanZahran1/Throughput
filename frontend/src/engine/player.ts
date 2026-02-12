@@ -1,5 +1,4 @@
 import type { Player, Item, GridSlot, UpgradeId, Robot } from '../types/game';
-import { GRID_SIZE } from '../constants/config';
 import { getPlayerSpeedMultiplier, getPickupRadius } from './upgrades';
 
 /**
@@ -13,10 +12,11 @@ export const tryMovePlayer = (
     player: Player,
     dx: number,
     dy: number,
-    robots: Robot[]
+    robots: Robot[],
+    gridSize: number
 ): { x: number, y: number } => {
-    const newX = Math.max(0, Math.min(GRID_SIZE - 1, player.x + dx));
-    const newY = Math.max(0, Math.min(GRID_SIZE - 1, player.y + dy));
+    const newX = Math.max(0, Math.min(gridSize - 1, player.x + dx));
+    const newY = Math.max(0, Math.min(gridSize - 1, player.y + dy));
 
     // Check for robot collision - player cannot move into a cell with a robot
     if (isCellBlockedByRobot(newX, newY, robots)) {
@@ -32,7 +32,8 @@ export const tryMovePlayer = (
 export const findSmarterMove = (
     player: { x: number, y: number },
     target: { x: number, y: number },
-    robots: Robot[]
+    robots: Robot[],
+    gridSize: number
 ): { x: number, y: number } => {
     const dx = target.x - player.x;
     const dy = target.y - player.y;
@@ -54,7 +55,7 @@ export const findSmarterMove = (
             y: player.y + dir.y,
             dir
         }))
-        .filter(m => m.x >= 0 && m.x < GRID_SIZE && m.y >= 0 && m.y < GRID_SIZE)
+        .filter(m => m.x >= 0 && m.x < gridSize && m.y >= 0 && m.y < gridSize)
         .map(m => {
             const dist = distanceToTarget(m.x, m.y);
             let priority = 3; // default: away
@@ -84,6 +85,7 @@ export const findSmarterMove = (
 
     return player; // Completely blocked
 };
+
 
 export const tryPickupItem = (
     player: Player,

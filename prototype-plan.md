@@ -169,6 +169,8 @@ Items drift slowly toward I/O ports. If the port is blocked:
 ### 6.4 Phase 4: Polish & Intelligence (Complete)
 
 - [x] A* Pathfinding for robots and player
+- [x] **Modular Routefinding Portal**: Re-architected pathfinding into a "plug and play" system via `IRouteFinder`.
+- [x] **Server-Side Telemetry**: Integrated with `agv-logger` backend (located in `fleet/crates/agv-logger`) to persist performance metrics (nodes, time, path length).
 - [x] Weighted traversal (Soft obstacles) for better flow
 - [x] Cell reservation (no head-on collisions)
 - [x] Robot intention visualization (dotted paths, markers)
@@ -178,13 +180,22 @@ Items drift slowly toward I/O ports. If the port is blocked:
 - [x] **Surge Mechanics**: "Rush Hour" periodic high-intensity events with 2x spawns and 3x XP rewards.
 - [x] **Visual Clarity**: Robot status icons (!, 📦, ...) and blue Conveyor path projections.
 
-**Test question:** Does the system feel reliable and transparent?
+### 6.5 Phase 5: Roguelike Depth (Complete)
+
+- [x] **Dynamic Map Scaling**: Grid expands from 12x12 up to 20x20 every 3 minutes.
+- [x] **Centered I/O Port**: Dynamically positioned delivery hub.
+- [x] **Ring-based Spawning**: Items spawn in a ring around the center for balanced distribution.
+- [x] **Anti-Death-Spiral**:
+  - [x] **Order Throttling**: Pauses order spawning at 4 unclaimed orders.
+  - [x] **Baseline Recycling**: 15% XP for orders that fail while being carried.
+- [x] **Meta Balancing**: Major buffs to core upgrades (`Speed Boots`, `Faster Robots`).
+
+**Test question:** Does the escalating map size and centered hub create a better run arc?
 
 ---
 
 ## 7. What We're NOT Building (Yet)
 
-- Backend / auth / persistence
 - Meta progression unlocks
 - Multiple maps
 - Sound / music

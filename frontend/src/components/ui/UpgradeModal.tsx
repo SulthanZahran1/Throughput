@@ -11,13 +11,13 @@ const UpgradeCard = ({ upgrade, onSelect }: UpgradeCardProps) => {
     return (
         <button
             onClick={() => onSelect(upgrade.id)}
-            className="flex flex-col items-center p-3 sm:p-6 bg-gray-800 rounded-xl border-2 border-gray-600 hover:border-yellow-400 hover:bg-gray-700 transition-all duration-200 cursor-pointer min-w-[120px] sm:min-w-[180px]"
+            className="flex flex-col items-center p-2 sm:p-6 bg-gray-800/80 backdrop-blur-sm rounded-xl border-2 border-gray-600 hover:border-yellow-400 hover:bg-gray-700 transition-all duration-200 cursor-pointer min-w-[100px] sm:min-w-[180px] w-full sm:w-auto"
         >
-            <span className="text-2xl sm:text-4xl mb-2 sm:mb-3">{upgrade.icon}</span>
-            <h3 className="text-sm sm:text-lg font-bold text-white mb-1 sm:mb-2 text-center">{upgrade.name}</h3>
-            <p className="text-xs sm:text-sm text-gray-300 text-center">{upgrade.description}</p>
+            <span className="text-xl sm:text-4xl mb-1 sm:mb-3">{upgrade.icon}</span>
+            <h3 className="text-xs sm:text-lg font-bold text-white mb-0.5 sm:mb-2 text-center leading-tight">{upgrade.name}</h3>
+            <p className="text-[10px] sm:text-sm text-gray-300 text-center line-clamp-2 sm:line-clamp-none">{upgrade.description}</p>
             {upgrade.stackable && (
-                <span className="mt-1 sm:mt-2 text-[10px] sm:text-xs text-green-400">Stackable</span>
+                <span className="mt-1 sm:mt-2 text-[8px] sm:text-xs text-green-400 font-medium">Stackable</span>
             )}
         </button>
     );
@@ -40,29 +40,27 @@ export const UpgradeModal = () => {
                     initial={{ opacity: 0 }}
                     animate={{ opacity: 1 }}
                     exit={{ opacity: 0 }}
-                    className="fixed inset-0 bg-black/80 flex items-center justify-center z-50 p-4"
+                    className="fixed inset-0 bg-black/90 flex items-center justify-center z-50 p-2 sm:p-4 overflow-y-auto"
                 >
                     <motion.div
-                        initial={{ scale: 0.8, y: 20 }}
-                        animate={{ scale: 1, y: 0 }}
-                        className="bg-gray-900 p-4 sm:p-8 rounded-2xl border border-gray-700 max-w-4xl w-full max-h-[90vh] overflow-y-auto relative shadow-[0_0_50px_rgba(0,0,0,0.5)]"
+                        initial={{ scale: 0.9, opacity: 0 }}
+                        animate={{ scale: 1, opacity: 1 }}
+                        className="bg-gray-900 p-4 sm:p-8 rounded-2xl border border-gray-700 max-w-[min(95vw,1000px)] w-full my-auto shadow-[0_0_50px_rgba(250,204,21,0.1)] backdrop-blur-xl"
                     >
-                        <motion.div
-                            initial={{ y: -50, opacity: 0 }}
-                            animate={{ y: 0, opacity: 1 }}
-                            transition={{ delay: 0.2, type: "spring" }}
-                            className="absolute -top-12 left-0 right-0 text-center"
-                        >
-                            <h1 className="text-4xl sm:text-6xl font-black text-yellow-400 drop-shadow-[0_0_20px_rgba(250,204,21,0.5)] italic uppercase tracking-tighter">
+                        <div className="text-center mb-4 sm:mb-8">
+                            <motion.h1
+                                initial={{ y: -20, opacity: 0 }}
+                                animate={{ y: 0, opacity: 1 }}
+                                className="text-3xl sm:text-6xl font-black text-yellow-400 drop-shadow-[0_0_15px_rgba(250,204,21,0.4)] italic uppercase tracking-tighter"
+                            >
                                 Level Up!
-                            </h1>
-                        </motion.div>
+                            </motion.h1>
+                            <p className="text-gray-400 text-xs sm:text-base mt-2">
+                                You reached level <span className="text-white font-bold">{level}</span>. Choose an upgrade:
+                            </p>
+                        </div>
 
-                        <p className="text-gray-400 text-center text-sm sm:text-base mb-4 sm:mb-6 mt-4">
-                            You reached level {level}. Choose an upgrade:
-                        </p>
-
-                        <div className="flex flex-wrap justify-center gap-2 sm:gap-4">
+                        <div className="grid grid-cols-1 sm:flex sm:flex-wrap justify-center gap-2 sm:gap-4 overflow-y-visible">
                             {pendingUpgrades.map(upgrade => (
                                 <UpgradeCard
                                     key={upgrade.id}

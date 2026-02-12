@@ -34,11 +34,12 @@ See `docs/prototype-plan.md` for scope, upgrades, and success criteria.
 | Layer | Technology |
 |-------|------------|
 | Frontend | React + Vite + TypeScript |
+| Backend (Telemetry) | Rust (Axum) |
 | State | Zustand |
 | Styling | Tailwind CSS |
 | Animation | Framer Motion |
 
-**No backend for prototype.** All state is client-side. Backend comes later if core loop works.
+**Minimal Backend for Telemetry.** A small Rust service (`agv-logger`) persists pathfinding data for performance analysis. Core game state remains client-side.
 
 ---
 
@@ -47,7 +48,7 @@ See `docs/prototype-plan.md` for scope, upgrades, and success criteria.
 1. **Engine is pure TypeScript** — No React in `/engine`. Framework-agnostic game logic.
 2. **React renders, Zustand stores** — Components read from store, dispatch actions.
 3. **Player-centric** — Player entity is first-class. Automation serves the player, not the other way around.
-4. **Prototype speed > perfection** — Ship fast, test feel, iterate or kill.
+4. **Data-Driven Optimization** — Routefinding telemetry is collected to identify and resolve bottlenecks.
 
 ---
 
@@ -56,13 +57,16 @@ See `docs/prototype-plan.md` for scope, upgrades, and success criteria.
 | Entity | Description |
 |--------|-------------|
 | **Player** | WASD or Tap-to-move, picks up items, collects XP |
-| **Item** | Colored box (red/blue/green), spawns at I/O port |
+| **Item** | Colored box, spawns in a ring around the central I/O port |
 | **Order** | Request for item type, has timer, fails if expired |
 | **Robot** | Auto-fulfills nearest orders, unlocked via upgrades |
+| **I/O Port** | Central hub for deliveries, dynamically centered |
+| **Routefinding Portal** | Manages modular algorithms (A*, etc.) and telemetry |
 | **XP Gem** | Generated on order completion (internal logic) |
 | **Floating XP** | Satisfying reward pops on delivery (automated & manual) |
-| **Conveyor** | Items on ground drift toward I/O ports (ghost path visuals) |
+| **Conveyor** | Items on ground drift toward center (ghost path visuals) |
 | **Surge (Rush Hour)** | Period high-intensity events (2x spawns, 3x XP rewards) |
+| **Map Scaling** | Grid expands every 3m (12x12 → 20x20) |
 
 ---
 
@@ -75,6 +79,7 @@ interface GameState {
   
   // Grid
   grid: Grid;
+  gridSize: number; // Dynamic size (12 to 20)
   
   // Orders & Items
   orders: Order[];
@@ -92,6 +97,7 @@ interface GameState {
   runTime: number;
   failedOrders: number;
   isGameOver: boolean;
+  hasWon: boolean;
 }
 ```
 
@@ -108,8 +114,9 @@ frontend/src/
 ├── engine/          # Pure game logic
 │   ├── player.ts    # Movement, pickup, deliver
 │   ├── orders.ts    # Spawn, timers, fail
-│   ├── robots.ts    # Auto-fulfill logic, A* search usage
-│   ├── astar.ts     # A* grid pathfinding utility
+│   ├── robots.ts    # Auto-fulfill logic, portal search usage
+│   ├── routefinding.ts # IRouteFinder, Portal, TelemetryStore
+│   ├── astar.ts     # A* implementation (Modular)
 │   ├── upgrades.ts  # Upgrade pool, effects
 │   ├── collision.ts # Robot slowing logic
 │   └── simulation.ts# Main game tick
@@ -122,6 +129,13 @@ frontend/src/
 └── hooks/
     ├── useGameLoop.ts
     └── useKeyboard.ts
+
+fleet/               # Backend & Simulation Engine (Rust/React)
+├── crates/          # Rust packages
+│   ├── agv-core/    # Simulation logic
+│   ├── agv-wasm/    # WASM bindings
+│   └── agv-logger/  # Telemetry logger
+└── web/             # Portfolio Visualizer (Independent)
 ```
 
 ---
@@ -186,14 +200,13 @@ function tick(delta: number) {
 
 **Test:** Is late-game spectacle real?
 
-### Phase 4: Polish (Complete)
-- [x] A* Pathfinding (Player & Robots)
-- [x] Weighted traversal (Soft obstacles)
-- [x] Intention visualization (Path lines)
-- [x] Instant player-avoidance rerouting
-- [x] **Fun Factor Polish**: Floating XP, Rush Hour events, Conveyor projections, and visual jiggle.
+### Phase 5: Roguelike Depth (Complete)
+- [x] **Dynamic Map Scaling**: Grid expands over time.
+- [x] **Centered I/O Port**: Fairer balancing for items and robots.
+- [x] **Anti-Death-Spiral**: Order throttling and baseline recycling.
+- [x] **Rebalanced Meta**: Meaningful upgrade buffs and tighter early game.
 
-**Test:** Does the system feel reliable and smart?
+**Test:** Does the run feel like it has a distinct arc?
 
 ---
 
@@ -228,6 +241,7 @@ npm run dev      # localhost:5173
 npm run lint
 npm run build
 npx tsx src/engine/routefinding.test.ts # Run route-finding tests
+npx tsx src/engine/fairness.test.ts     # Run fairness enforcement tests
 ```
 
 ---

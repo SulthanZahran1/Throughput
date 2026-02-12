@@ -1,6 +1,7 @@
 import type { Robot } from '../types/game';
 import { tickGame } from './simulation';
-import { GRID_SIZE } from '../constants/config';
+import { INITIAL_GRID_SIZE, getIOPort } from '../constants/config';
+import './astar'; // Ensure AStar is registered with routefindingPortal
 import process from 'process';
 
 // Mock types/constants if needed or import directly if they are pure
@@ -26,12 +27,18 @@ async function runTests() {
 
 // Helper to create a basic state
 function createInitialState(): any {
+    const size = INITIAL_GRID_SIZE;
     return {
-        player: { x: 8, y: 8, carrying: null, speedMultiplier: 1, pickupRadius: 1, moveProgress: 0, targetX: null, targetY: null, path: [] },
-        grid: Array(GRID_SIZE).fill(0).map(() => Array(GRID_SIZE).fill({ type: 'empty' })),
+        player: {
+            x: Math.floor(size / 2) + 2,
+            y: Math.floor(size / 2) + 2,
+            carrying: null, speedMultiplier: 1, pickupRadius: 1, moveProgress: 0, targetX: null, targetY: null, path: []
+        },
+        grid: Array(size).fill(0).map(() => Array(size).fill({ type: 'empty' })),
         orders: [],
         items: [],
         robots: [],
+        gridSize: size,
         xp: 0,
         level: 1,
         upgrades: [],
@@ -54,11 +61,11 @@ async function testOppositeCommands() {
     // Robot B at (7,0) wants (5,0)
     const robotA: Robot = {
         id: 'robot-A', x: 5, y: 0, state: 'moving_to_item', target: { x: 7, y: 0 },
-        carryingItems: [], moveProgress: 0, blockedTicks: 0, targetOrderIds: ['order-1'], speedMultiplier: 1
+        carryingItems: [], moveProgress: 0, blockedTicks: 0, stunTicks: 0, targetOrderIds: ['order-1'], speedMultiplier: 1
     };
     const robotB: Robot = {
         id: 'robot-B', x: 7, y: 0, state: 'moving_to_item', target: { x: 5, y: 0 },
-        carryingItems: [], moveProgress: 0, blockedTicks: 0, targetOrderIds: ['order-2'], speedMultiplier: 1
+        carryingItems: [], moveProgress: 0, blockedTicks: 0, stunTicks: 0, targetOrderIds: ['order-2'], speedMultiplier: 1
     };
 
     state.robots = [robotA, robotB];
@@ -102,7 +109,7 @@ async function testItemAvoidance() {
     // Item at (5,0)
     state.robots = [{
         id: 'robot-1', x: 0, y: 0, state: 'moving_to_item', target: { x: 10, y: 0 },
-        carryingItems: [], moveProgress: 0, blockedTicks: 0, targetOrderIds: ['order-1'], speedMultiplier: 1
+        carryingItems: [], moveProgress: 0, blockedTicks: 0, stunTicks: 0, targetOrderIds: ['order-1'], speedMultiplier: 1
     }];
     state.orders = [{ id: 'order-1', type: 'red', timeLeft: 100000, itemId: 'item-1', claimedBy: 'robot-1' }];
     state.items = [
@@ -129,35 +136,36 @@ async function testPlayerCollision() {
     console.log('--- Scenario 3: Player vs Robot ---');
     let state = createInitialState();
 
-    // Player at (0,8) target (5,8)
-    // Robot at (2,8) (stationary/idle)
-    state.player = { ...state.player, x: 0, y: 8, targetX: 5, targetY: 8 };
+    // Player at (0,2) target (5,2)
+    // Robot at (2,2) (stationary/idle)
+    state.player = { ...state.player, x: 0, y: 2, targetX: 5, targetY: 2 };
     state.robots = [{
-        id: 'robot-1', x: 2, y: 8, state: 'idle', target: null,
-        carryingItems: [], moveProgress: 0, blockedTicks: 0, targetOrderIds: [], speedMultiplier: 1
+        id: 'robot-1', x: 2, y: 2, state: 'idle', target: null,
+        carryingItems: [], moveProgress: 0, blockedTicks: 0, stunTicks: 0, targetOrderIds: [], speedMultiplier: 1
     }];
 
     // Simulate for 5 seconds
     for (let i = 0; i < 50; i++) {
         state = tickGame(state, 100);
-        if (state.player.x === 5 && state.player.y === 8) {
+        if (state.player.x === 5 && state.player.y === 2) {
             console.log(`✅ Player reached target in ${i} ticks.`);
             return;
         }
     }
 
-    console.log(`❌ Player stuck at (${state.player.x}, ${state.player.y}). Robot at (2, 8)`);
+    console.log(`❌ Player stuck at (${state.player.x}, ${state.player.y}). Robot at (2, 2)`);
     throw new Error('Player movement halted by robot even if path exists around');
 }
 
 async function testIOPortBlockage() {
     console.log('--- Scenario 4: I/O Port Blockage ---');
     let state = createInitialState();
+    const ioPort = getIOPort(state.gridSize);
 
-    // 2 robots at (2,8), (3,8) all carrying items, going to (0,8)
+    // 2 robots at (ioPort.x+2, ioPort.y), (ioPort.x+3, ioPort.y) all carrying items, going to I/O port
     const robots: Robot[] = [
-        { id: 'robot-1', x: 2, y: 8, state: 'moving_to_port', target: { x: 0, y: 8 }, carryingItems: [{ id: 'i1', type: 'red', status: 'carried' } as any], moveProgress: 0, blockedTicks: 0, targetOrderIds: ['o1'], targetOrderId: 'o1', speedMultiplier: 1 },
-        { id: 'robot-2', x: 3, y: 8, state: 'moving_to_port', target: { x: 0, y: 8 }, carryingItems: [{ id: 'i2', type: 'blue', status: 'carried' } as any], moveProgress: 0, blockedTicks: 0, targetOrderIds: ['o2'], targetOrderId: 'o2', speedMultiplier: 1 }
+        { id: 'robot-1', x: ioPort.x + 2, y: ioPort.y, state: 'moving_to_port', target: { x: ioPort.x, y: ioPort.y }, carryingItems: [{ id: 'i1', type: 'red', status: 'carried' } as any], moveProgress: 0, blockedTicks: 0, stunTicks: 0, targetOrderIds: ['o1'], targetOrderId: 'o1', speedMultiplier: 1 },
+        { id: 'robot-2', x: ioPort.x + 3, y: ioPort.y, state: 'moving_to_port', target: { x: ioPort.x, y: ioPort.y }, carryingItems: [{ id: 'i2', type: 'blue', status: 'carried' } as any], moveProgress: 0, blockedTicks: 0, stunTicks: 0, targetOrderIds: ['o2'], targetOrderId: 'o2', speedMultiplier: 1 }
     ];
     state.robots = robots;
     state.orders = [
@@ -185,14 +193,13 @@ async function testDynamicItemDrift() {
     // Robot moving to item-1 at (5,5)
     state.robots = [{
         id: 'robot-1', x: 0, y: 0, state: 'moving_to_item', target: { x: 5, y: 5 },
-        carryingItems: [], moveProgress: 0, blockedTicks: 0, targetOrderIds: ['o1'], targetOrderId: 'o1', speedMultiplier: 1
+        carryingItems: [], moveProgress: 0, blockedTicks: 0, stunTicks: 0, targetOrderIds: ['o1'], targetOrderId: 'o1', speedMultiplier: 1
     }];
     state.orders = [{ id: 'o1', type: 'red', timeLeft: 100000, itemId: 'i1' }];
     state.items = [{ id: 'i1', x: 5, y: 5, type: 'red', status: 'on_ground' }];
 
     // Tick once to find path
     state = tickGame(state, 100);
-    // console.log(`Initial robot target: (${state.robots[0].target?.x}, ${state.robots[0].target?.y})`);
 
     // Move item!
     state.items[0].x = 7;
@@ -215,7 +222,7 @@ async function testTotalBlockage() {
     // Robot wants to go to (5,5)
     state.robots = [{
         id: 'robot-1', x: 0, y: 0, state: 'moving_to_item', target: { x: 5, y: 5 },
-        carryingItems: [], moveProgress: 0, blockedTicks: 0, targetOrderIds: ['o1'], targetOrderId: 'o1', speedMultiplier: 1
+        carryingItems: [], moveProgress: 0, blockedTicks: 0, stunTicks: 0, targetOrderIds: ['o1'], targetOrderId: 'o1', speedMultiplier: 1
     }];
     state.orders = [{ id: 'o1', type: 'red', timeLeft: 100000, itemId: 'i1' }];
     state.items = [{ id: 'i1', x: 5, y: 5, type: 'red', status: 'on_ground' }];
@@ -227,7 +234,6 @@ async function testTotalBlockage() {
     // Simulate for a few ticks. Robot should try to path, reach the player, and get blocked.
     for (let i = 0; i < 60; i++) {
         state = tickGame(state, 100);
-        // if (i % 10 === 0) console.log(`Tick ${i}: Robot at (${state.robots[0].x}, ${state.robots[0].y}) Path: ${JSON.stringify(state.robots[0].path)}`);
     }
 
     if (state.robots[0].blockedTicks > 0 || state.robots[0].path.length === 0) {
@@ -240,3 +246,4 @@ async function testTotalBlockage() {
 }
 
 runTests();
+

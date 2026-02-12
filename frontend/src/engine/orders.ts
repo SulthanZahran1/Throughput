@@ -1,5 +1,5 @@
 import type { Order, ItemType, Item } from '../types/game';
-import { ORDER_TIMEOUT, IO_PORT, FRAGILE_ITEM_DECAY_MULTIPLIER } from '../constants/config';
+import { ORDER_TIMEOUT, getIOPort, FRAGILE_ITEM_DECAY_MULTIPLIER, BASELINE_RECYCLING_XP, XP_PER_ORDER } from '../constants/config';
 
 interface OrderWithItem {
     order: Order;
@@ -9,10 +9,11 @@ interface OrderWithItem {
 /**
  * Spawn an order AND its paired item together.
  * This guarantees 1:1 relationship between orders and items.
+ * Items spawn in a ring around the center port.
  */
 export const spawnOrderWithItem = (
     existingItems: Item[],
-    _currentTime: number,
+    gridSize: number,
     timeExtension: number = 0
 ): OrderWithItem => {
     const types: ItemType[] = ['red', 'blue', 'green'];
@@ -22,16 +23,29 @@ export const spawnOrderWithItem = (
     const orderId = Math.random().toString(36).substr(2, 9);
     const itemId = `item-${orderId}`;
 
-    // Create the paired item
-    let itemX = IO_PORT.x + 3 + Math.floor(Math.random() * 8);
-    let itemY = IO_PORT.y + Math.floor(Math.random() * 7) - 3;
+    const ioPort = getIOPort(gridSize);
 
-    // Avoid spawning on top of existing items
-    const occupiedPositions = existingItems.map(i => `${Math.round(i.x)},${Math.round(i.y)}`);
+    // Create the paired item in a ring around center
+    // Radius between 3 and (gridSize/2 - 1)
+    const minRadius = 3;
+    const maxRadius = Math.floor(gridSize / 2) - 1;
+
+    let itemX = 0;
+    let itemY = 0;
     let attempts = 0;
-    while (occupiedPositions.includes(`${Math.round(itemX)},${Math.round(itemY)}`) && attempts < 10) {
-        itemX = IO_PORT.x + 3 + Math.floor(Math.random() * 10);
-        itemY = IO_PORT.y + Math.floor(Math.random() * 9) - 4;
+
+    while (attempts < 20) {
+        const angle = Math.random() * Math.PI * 2;
+        const radius = minRadius + Math.random() * (maxRadius - minRadius);
+        itemX = Math.round(ioPort.x + Math.cos(angle) * radius);
+        itemY = Math.round(ioPort.y + Math.sin(angle) * radius);
+
+        // Keep within bounds
+        itemX = Math.max(0, Math.min(gridSize - 1, itemX));
+        itemY = Math.max(0, Math.min(gridSize - 1, itemY));
+
+        const occupiedPositions = existingItems.map(i => `${Math.round(i.x)},${Math.round(i.y)}`);
+        if (!occupiedPositions.includes(`${itemX},${itemY}`)) break;
         attempts++;
     }
 
@@ -57,15 +71,17 @@ export const spawnOrderWithItem = (
 export const updateOrders = (
     orders: Order[],
     delta: number,
-    itemsOnGround: Item[]
-): { activeOrders: Order[], failedCount: number, failedItemIds: string[] } => {
+    itemsOnGround: Item[],
+    carriedItemIds: Set<string>
+): { activeOrders: Order[], failedCount: number, failedItemIds: string[], expiredXp: number } => {
     let failedCount = 0;
     const failedItemIds: string[] = [];
+    let expiredXp = 0;
 
     const activeOrders = orders.filter(order => {
         // Fragile trait: Blue items decay faster on the ground
-        let decayMultiplier = 1.0;
         const isOnGround = itemsOnGround.some(i => i.id === order.itemId);
+        let decayMultiplier = 1.0;
 
         if (isOnGround && order.type === 'blue') {
             decayMultiplier = FRAGILE_ITEM_DECAY_MULTIPLIER;
@@ -76,10 +92,18 @@ export const updateOrders = (
         if (order.timeLeft <= 0) {
             failedCount++;
             failedItemIds.push(order.itemId);
+
+            // Baseline recycling: only for orders being carried
+            if (carriedItemIds.has(order.itemId)) {
+                expiredXp += Math.floor(XP_PER_ORDER * BASELINE_RECYCLING_XP);
+            }
+
             return false;
         }
         return true;
     });
 
-    return { activeOrders, failedCount, failedItemIds };
+    return { activeOrders, failedCount, failedItemIds, expiredXp };
 };
+
+

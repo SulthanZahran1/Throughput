@@ -3,6 +3,21 @@
 All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
+### Added
+- **Roguelike Enhancements**:
+  - **Dynamic Map Scaling**: The grid now expands from 12x12 up to 20x20 every 3 minutes, increasing difficulty as the run progresses.
+  - **Centered I/O Port**: The delivery hub is now dynamically centered on the grid, with items spawning in a ring around it for better balance.
+  - **Anti-Death-Spiral Mechanics**:
+    - **Order Throttling**: Spawn rate is paused if 4 or more unclaimed orders are pending.
+    - **Baseline Recycling**: Expired orders now award 15% XP if they were being carried at the time of failure.
+  - **Rebalanced Configuration**:
+    - Reduced `ORDER_TIMEOUT` and initial spawn rates for a tighter early game.
+    - Buffed `Speed Boots` (+40%) and `Faster Robots` (+35%) upgrades.
+- **Modular Routefinding System**: Re-architected pathfinding into a "plug and play" system with the `IRouteFinder` interface.
+- **Server-Side Telemetry**: Integrated with the `agv-logger` backend to persist pathfinding performance data (nodes visited, execution time, path length).
+- **Routefinding Portal**: A central registry for managing multiple algorithms and automatically collecting telemetry metrics.
+- **A* Instrumention**: Refactored A* algorithm to implement the the new interface and collect deep telemetry per search.
+- **Relocated Fleet Project**: Moved the `fleet` supporting project from the workspace root into the `Throughput` directory for better consolidation and simplified management.
 
 ### Added
 - **Floating XP Notifications**: XP gains now float up from the I/O port with a satisfying animation.

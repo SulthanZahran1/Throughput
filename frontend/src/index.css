@@ -20,20 +20,21 @@
   --grid-padding: 8px;
 }
 
-/* Mobile responsive sizing */
-@media (max-width: 768px) {
+/* Mobile/Tablet responsive sizing - fluid scaling to fill screen better */
+@media (max-width: 1024px) {
   :root {
-    --cell-size: min(5.8vw, 32px);
-    --grid-gap: 2px;
-    --grid-padding: 6px;
+    /* Target roughly 90% width divided by 16 cells (5.6vw) but allow growing up to 64px */
+    --cell-size: clamp(20px, 5.8vw, 64px);
+    --grid-gap: clamp(1px, 0.4vw, 3px);
+    --grid-padding: clamp(4px, 1.2vw, 12px);
   }
 }
 
-/* Extra small screens - maximize grid on portrait */
-@media (max-width: 480px) {
+/* Vertical scaling for short screens */
+@media (max-height: 700px) and (orientation: landscape) {
   :root {
-    --cell-size: min(5.4vw, 24px);
-    --grid-gap: 1.5px;
+    --cell-size: clamp(16px, 6.5vh, 48px);
+    --grid-gap: clamp(1px, 0.2vh, 2px);
     --grid-padding: 4px;
   }
 }
