@@ -4,6 +4,46 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### Changed
+- Updated `plan.md` to include Phase 3.5 (Architecture Refactor) and reference `REFACTOR_PLAN.md`
+- Adjusted timeline for Phases 4-6 to accommodate refactoring work
+
+## [Phase 3.5] - 2026-02-21
+
+### Added
+- **New Engine Structure**: Created framework-agnostic game engine in `/engine`
+  - `types.ts` - Core engine types (no React dependencies)
+  - `simulation.ts` - Main tick function, pure state transformation
+  - `crane.ts` - Crane movement and state machine
+  - `storage.ts` - Storage decision logic (from decision.ts)
+  - `retrieval.ts` - Retrieval decision logic (from decision.ts)
+  - `orders.ts` - Order generation and deadline checking
+  - `index.ts` - Public API exports
+- **Unit Tests**: Added 50 tests for engine functions
+  - `storage.test.ts` - 6 tests for storage slot selection
+  - `retrieval.test.ts` - 7 tests for retrieval strategies
+  - `orders.test.ts` - 12 tests for order management
+  - `crane.test.ts` - 15 tests for crane state machine
+  - `simulation.test.ts` - 10 tests for simulation integration
+- **Test Infrastructure**: Added Vitest test runner with `npm test`
+
+### Changed
+- **Refactored gameStore.ts**: Removed 400+ lines of game logic
+  - Eliminated `tick()` method (moved to engine)
+  - Store now only manages state and simple setters
+  - Added `setSimulationState()` for bulk updates from engine
+- **Updated useGameLoop.ts**: Now calls engine instead of store
+  - Gets simulation context from store
+  - Calls `tickSimulation()` from engine
+  - Updates store with new state via `setSimulationState()`
+- **Deleted decision.ts**: Logic moved to engine modules
+
+### Technical Details
+- Engine is pure TypeScript with no React/Zustand dependencies
+- All engine functions are pure (same input → same output)
+- State flows: Store → Engine → New State → Store Update
+- Build passes with strict TypeScript settings
+
 ## [Phase 4] - 2025-12-12
  
  ### Added

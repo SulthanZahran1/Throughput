@@ -24,6 +24,7 @@
 **Related Documents:**
 - [tutorial.md](./tutorial.md) — Onboarding flow, tutorial levels 1-5, hint system
 - [AGENTS.md](../AGENTS.md) — Guidelines for AI coding agents
+- [REFACTOR_PLAN.md](./REFACTOR_PLAN.md) — Current architecture refactoring plan (Phase 3.5)
 
 ---
 
@@ -162,7 +163,24 @@ Architecture supports future modes:
 - [x] Unlock system (complete level → unlock feature)
 - [x] Shift summary screen (stats, stars, next level)
 
-### Phase 4: Backend Integration (Week 11-13)
+### Phase 3.5: Architecture Refactor (Week 11-12)
+
+> **See [REFACTOR_PLAN.md](./REFACTOR_PLAN.md) for detailed implementation plan**
+
+Before proceeding with full backend integration, we're refactoring the architecture to ensure separation of concerns and testability.
+
+**Frontend:**
+- [ ] Extract engine logic from `gameStore.ts` into framework-agnostic `/engine`
+- [ ] Create proper API client layer (`/api`)
+- [ ] Split `gameStore.ts` (661 lines) into focused state slices
+- [ ] Add unit tests for engine logic
+
+**Backend:**
+- [ ] Implement layered architecture (models → storage → service → API)
+- [ ] Set up PostgreSQL connection and migrations
+- [ ] Create models, storage layer, and services
+
+### Phase 4: Backend Integration (Week 13-15)
 
 - [x] Go backend scaffolding
 - [ ] OAuth integration (Google)
@@ -171,7 +189,7 @@ Architecture supports future modes:
 - [ ] Shift result submission API
 - [ ] Basic anti-cheat (server validates plausibility)
 
-### Phase 5: Polish (Week 14-16)
+### Phase 5: Polish (Week 16-18)
 
 - [ ] Sound effects
 - [ ] Visual feedback (order complete, order failed, zone highlight)
@@ -180,7 +198,7 @@ Architecture supports future modes:
 - [ ] Loading states
 - [ ] Error handling
 
-### Phase 6: Launch Prep (Week 17-18)
+### Phase 6: Launch Prep (Week 19-20)
 
 - [ ] Landing page
 - [ ] Analytics integration
