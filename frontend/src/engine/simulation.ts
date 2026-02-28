@@ -1,356 +1,451 @@
-/**
- * Simulation Engine
- * 
- * Main tick function for the game simulation.
- * Pure function: takes state + dt, returns new state.
- * No React/Zustand dependencies.
- */
+import type { RNG } from './rng';
+import type { SimulationContext, SimulationEvent, TickResult, Crane, Order, ShiftResult, SimulationFlags, TransferJob, Item } from './types';
+import { tickCrane, isAvailable, createTransferJob, assignJob, getCurrentKey } from './crane';
+import type { Grid } from './grid';
+import { findStorageSlot } from './storage';
+import { findRetrievalSlot } from './retrieval';
+import { trySpawnOrder, updateOrders, completeOrder, removeOrders, sortOrdersByPriority, canFulfillOrder } from './orders';
 
-import type {
-    SimulationState,
-    SimulationContext,
-    Grid,
-    Crane,
-    Order,
-    ShiftStats,
-    Item,
-} from './types';
-import { findBestStorageSlot } from './storage';
-import { findBestRetrieval } from './retrieval';
-import { updateOrderDeadlines, generateOrders } from './orders';
-import {
-    tickCrane,
-    startStoreMission,
-    startRetrieveMission,
-} from './crane';
-import type { CraneAction } from './crane';
+const HP_LOSS_PER_FAILED_ORDER = 1;
 
-// Constants
-const ACTION_DELAY = 0.5;
-
-export interface TickResult {
-    state: SimulationState;
-    actions: SimulationAction[];
+export interface SimulationConfig {
+  targetFPS?: number;
+  maxDeltaTime?: number; // Prevent spiral of death on lag
 }
 
-export type SimulationAction =
-    | { type: 'ORDER_COMPLETED'; orderId: string }
-    | { type: 'ORDER_FAILED'; orderId: string }
-    | { type: 'ITEM_STORED'; slotKey: string; item: Item }
-    | { type: 'ITEM_RETRIEVED'; slotKey: string; item: Item }
-    | { type: 'CRANE_ACTION'; action: CraneAction };
+/**
+ * Initialize a new simulation context
+ */
+export function createSimulationContext(
+  seed: number,
+  shiftNumber: number,
+  difficulty: 'normal' | 'hard' | 'brutal',
+  grid: Grid,
+  flags: SimulationFlags,
+  params: {
+    totalShiftTime: number;
+    orderSpawnRate: number;
+    orderDeadlineBase: number;
+    craneCount: number;
+    craneSpeed: number;
+    transferTime: number;
+  },
+  rng: RNG
+): SimulationContext {
+  // Create cranes
+  const cranes: Crane[] = [];
+  for (let i = 0; i < params.craneCount; i++) {
+    // Position cranes spaced out near the input area
+    const x = Math.floor(grid.width * (0.2 + (i / Math.max(params.craneCount - 1, 1)) * 0.6));
+    cranes.push({
+      id: `crane-${i}`,
+      x,
+      y: 2, // Start near input
+      targetX: x,
+      targetY: 2,
+      state: 'IDLE',
+      movingAxis: null,
+      heldItem: null,
+      transferProgress: 0,
+      transferTime: params.transferTime,
+      currentJob: null,
+    });
+  }
+
+  return {
+    seed,
+    shiftNumber,
+    difficulty,
+    shiftTimeRemaining: params.totalShiftTime,
+    totalShiftTime: params.totalShiftTime,
+    realTime: 0,
+    grid,
+    cranes,
+    orders: [],
+    zones: [], // TODO: Create zones from grid
+    inventory: new Map(),
+    flags,
+    retrievalMode: 'fifo',
+    orderSpawnRate: params.orderSpawnRate,
+    orderDeadlineBase: params.orderDeadlineBase,
+    lastOrderTime: -params.orderSpawnRate, // Allow immediate first order
+    rng,
+    stats: {
+      ordersCompleted: 0,
+      ordersFailed: 0,
+      itemsStored: 0,
+      itemsRetrieved: 0,
+      vipOrdersCompleted: 0,
+    },
+  };
+}
 
 /**
- * Main simulation tick.
- * Takes the current simulation context and delta time, returns the new state.
- * 
- * This function is pure - it does not mutate the input state.
+ * Main simulation tick - advances the simulation by dt seconds
  */
 export function tickSimulation(
-    context: SimulationContext,
-    dt: number
+  context: SimulationContext,
+  dt: number,
+  config: SimulationConfig = {}
 ): TickResult {
-    const actions: SimulationAction[] = [];
-
-    // 1. Update time
-    const newShiftTime = Math.max(0, context.shiftTime - dt);
-    const newRealTime = context.realTime + dt;
-
-    // 2. Update orders (check deadlines)
-    const orderUpdate = updateOrderDeadlines(context.orders, newRealTime);
-    let newOrders = orderUpdate.orders;
-    let statsDelta = { ordersFailed: orderUpdate.justFailed };
-
-    // 3. Auto order generation
-    const orderGenResult = generateOrders(newOrders, {
-        realTime: newRealTime,
-        lastOrderTime: context.lastOrderTime,
-        shiftTime: newShiftTime,
-        orderSchedule: context.orderSchedule,
-        availableItemTypes: context.availableItemTypes,
+  const { maxDeltaTime = Infinity } = config;
+  
+  // Cap delta time to prevent spiral of death (if configured)
+  const safeDt = Math.min(dt, maxDeltaTime);
+  
+  const events: SimulationEvent[] = [];
+  
+  // 1. Update timers
+  context.shiftTimeRemaining -= safeDt;
+  context.realTime += safeDt;
+  
+  // Check for shift end
+  if (context.shiftTimeRemaining <= 0) {
+    context.shiftTimeRemaining = 0;
+    events.push({
+      type: 'SHIFT_END',
+      timestamp: context.realTime,
+      data: { reason: 'time_expired' },
     });
-    newOrders = orderGenResult.orders;
-    void orderGenResult.newLastOrderTime; // Intentionally unused - handled by caller
-
-    // 4. Process crane FSM
-    let nextCrane = context.crane;
-    let nextGrid = context.grid;
-    let nextStats: ShiftStats = {
-        ...context.stats,
-        ordersFailed: context.stats.ordersFailed + statsDelta.ordersFailed,
-    };
-
-    if (nextCrane) {
-        const craneResult = processCraneTick(
-            nextCrane,
-            nextGrid,
-            newOrders,
-            nextStats,
-            context,
-            dt,
-            (simAction) => { actions.push(simAction); }
-        );
-
-        nextCrane = craneResult.crane;
-        nextGrid = craneResult.grid;
-        nextStats = craneResult.stats;
-        newOrders = craneResult.orders;
-    }
-
-    const newState: SimulationState = {
-        shiftTime: newShiftTime,
-        realTime: newRealTime,
-        grid: nextGrid,
-        crane: nextCrane,
-        orders: newOrders,
-        zones: context.zones,
-        retrievalMode: context.retrievalMode,
-        craneMode: context.craneMode,
-        stats: nextStats,
-    };
-
-    return {
-        state: newState,
-        actions,
-    };
-}
-
-interface CraneTickContext {
-    crane: Crane;
-    grid: Grid;
-    stats: ShiftStats;
-    orders: Order[];
-}
-
-function processCraneTick(
-    crane: Crane,
-    grid: Grid,
-    orders: Order[],
-    stats: ShiftStats,
-    context: SimulationContext,
-    dt: number,
-    onAction: (action: SimulationAction) => void
-): CraneTickContext {
-    let nextCrane = crane;
-    let nextGrid = grid;
-    let nextStats = stats;
-    let nextOrders = orders;
-
-    // Helper to find storage slot
-    const findStorage = (item: Item) => findBestStorageSlot(item, nextGrid, context.zones);
-
-    // Process current crane state
-    const craneResult = tickCrane(crane, dt, {
-        grid: nextGrid,
-        onNeedStoreTarget: findStorage,
+    return { context, events, deltaTime: safeDt };
+  }
+  
+  // 2. Spawn new orders
+  const newOrder = trySpawnOrder(context, events);
+  if (newOrder) {
+    context.orders.push(newOrder);
+    context.lastOrderTime = context.realTime;
+  }
+  
+  // 3. Update existing orders (deadlines)
+  const { expiredOrders } = updateOrders(context, events, safeDt);
+  
+  // 4. Remove expired orders and apply HP loss
+  if (expiredOrders.length > 0) {
+    removeOrders(context, expiredOrders);
+    events.push({
+      type: 'HP_LOST',
+      timestamp: context.realTime,
+      data: { amount: expiredOrders.length * HP_LOSS_PER_FAILED_ORDER },
     });
-
-    nextCrane = craneResult.crane;
-
-    // Handle crane actions
-    if (craneResult.action) {
-        const action = craneResult.action;
-        onAction({ type: 'CRANE_ACTION', action });
-
-        switch (action.type) {
-            case 'PICKUP_FROM_IO': {
-                // Generate a random item based on available types
-                const itemType = context.availableItemTypes[
-                    Math.floor(Math.random() * context.availableItemTypes.length)
-                ] ?? 'red';
-                
-                const newItem: Item = {
-                    id: generateId(),
-                    type: itemType,
-                    storedAt: context.realTime,
-                };
-
-                nextCrane = { ...nextCrane, carrying: newItem };
-
-                // Immediately process next step - find storage target
-                const targetSlot = findStorage(newItem);
-                if (targetSlot) {
-                    nextCrane = {
-                        ...nextCrane,
-                        mission: {
-                            type: 'STORE',
-                            targetX: targetSlot.x,
-                            targetY: targetSlot.y,
-                            item: newItem,
-                        },
-                    };
-                }
-                break;
-            }
-
-            case 'DROP_AT_SLOT': {
-                const { slot } = action;
-                const key = `${slot.x},${slot.y}`;
-                
-                if (nextCrane.carrying) {
-                    const newSlots = new Map(nextGrid.slots);
-                    newSlots.set(key, {
-                        ...slot,
-                        state: 'occupied',
-                        item: nextCrane.carrying,
-                    });
-                    nextGrid = { ...nextGrid, slots: newSlots };
-                    
-                    onAction({
-                        type: 'ITEM_STORED',
-                        slotKey: key,
-                        item: nextCrane.carrying,
-                    });
-                }
-                break;
-            }
-
-            case 'PICKUP_FROM_SLOT': {
-                const { slot, item } = action;
-                const key = `${slot.x},${slot.y}`;
-                
-                const newSlots = new Map(nextGrid.slots);
-                newSlots.set(key, { ...slot, state: 'empty', item: null });
-                nextGrid = { ...nextGrid, slots: newSlots };
-
-                onAction({
-                    type: 'ITEM_RETRIEVED',
-                    slotKey: key,
-                    item,
-                });
-                break;
-            }
-
-            case 'DELIVER_AT_IO': {
-                if (nextCrane.carrying) {
-                    const item = nextCrane.carrying;
-                    const matchingOrderIndex = nextOrders.findIndex(
-                        o => o.status === 'pending' && o.itemType === item.type
-                    );
-
-                    if (matchingOrderIndex !== -1) {
-                        nextOrders = [...nextOrders];
-                        nextOrders[matchingOrderIndex] = {
-                            ...nextOrders[matchingOrderIndex],
-                            status: 'completed',
-                            completedAt: context.realTime,
-                        };
-                        nextStats = {
-                            ...nextStats,
-                            ordersCompleted: nextStats.ordersCompleted + 1,
-                        };
-
-                        onAction({
-                            type: 'ORDER_COMPLETED',
-                            orderId: nextOrders[matchingOrderIndex].id,
-                        });
-                    }
-                }
-                break;
-            }
-        }
-    }
-
-    // 5. Process IDLE state - find new missions
-    if (nextCrane.state === 'IDLE') {
-        const idleResult = processIdleState(
-            nextCrane,
-            nextGrid,
-            nextOrders,
-            context
-        );
-        nextCrane = idleResult.crane;
-    }
-
-    return {
-        crane: nextCrane,
-        grid: nextGrid,
-        stats: nextStats,
-        orders: nextOrders,
-    };
-}
-
-function processIdleState(
-    crane: Crane,
-    grid: Grid,
-    orders: Order[],
-    context: SimulationContext
-): { crane: Crane } {
-    // Priority 1: Retrieve (if orders pending)
-    const retrievalTarget = findBestRetrieval(
-        orders,
-        grid,
-        context.retrievalMode,
-        crane
-    );
-
-    if (retrievalTarget) {
-        const { slot } = retrievalTarget;
-        
-        // If already at the slot, start transferring
-        if (crane.x === slot.x && crane.y === slot.y) {
-            return {
-                crane: {
-                    ...crane,
-                    mission: {
-                        type: 'RETRIEVE',
-                        targetX: slot.x,
-                        targetY: slot.y,
-                        item: slot.item!,
-                    },
-                    state: 'TRANSFERRING',
-                    busyTimeRemaining: ACTION_DELAY,
-                },
-            };
-        }
-
-        // Move to slot
-        return {
-            crane: startRetrieveMission(crane, slot.x, slot.y),
-        };
-    }
-
-    // Priority 2: Store (go to IO and start store mission)
-    // Check if we can store (grid not full)
-    const hasEmptySlot = Array.from(grid.slots.values()).some(s => s.state === 'empty');
+  }
+  
+  // 5. Create jobs for orders that don't have one yet
+  assignJobsToCranes(context);
+  
+  // 6. Tick all cranes
+  for (const crane of context.cranes) {
+    const result = tickCrane(crane, safeDt, context.grid, context.flags);
     
-    if (hasEmptySlot) {
-        // If already at IO, start store mission
-        if (crane.x === grid.ioPort.x && crane.y === grid.ioPort.y) {
-            return {
-                crane: {
-                    ...crane,
-                    mission: {
-                        type: 'STORE',
-                        targetX: grid.ioPort.x,
-                        targetY: grid.ioPort.y,
-                        item: { id: 'pending', type: 'red', storedAt: 0 },
-                    },
-                    state: 'TRANSFERRING',
-                    busyTimeRemaining: ACTION_DELAY,
-                },
-            };
-        }
-
-        // Move to IO
-        return {
-            crane: startStoreMission(crane, grid),
-        };
+    if (result?.event === 'pickup_complete' && result.item) {
+      events.push({
+        type: 'CRANE_PICKUP',
+        timestamp: context.realTime,
+        data: { craneId: crane.id, itemId: result.item.id, cellKey: result.cellKey },
+      });
     }
-
-    // Nothing to do - stay idle
-    return { crane };
+    
+    if (result?.event === 'dropoff_complete' && result.item) {
+      events.push({
+        type: 'CRANE_DROPOFF',
+        timestamp: context.realTime,
+        data: { craneId: crane.id, itemId: result.item.id, cellKey: result.cellKey },
+      });
+      
+      // Track stats and complete orders
+      handleDropoff(result.orderId, result.item, result.cellKey!, context, events);
+    }
+  }
+  
+  return { context, events, deltaTime: safeDt };
 }
 
-function generateId(): string {
-    return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, (c) => {
-        const r = Math.random() * 16 | 0;
-        const v = c === 'x' ? r : (r & 0x3 | 0x8);
-        return v.toString(16);
+/**
+ * Create and assign jobs to available cranes
+ * Each job corresponds to one order and tracks the full lifecycle
+ */
+function assignJobsToCranes(context: SimulationContext): void {
+  // First, handle orphaned cranes (holding items but job's order expired or invalid)
+  for (const crane of context.cranes) {
+    if (crane.state === 'IDLE' && crane.heldItem && crane.currentJob) {
+      // Check if the job's order still exists
+      const orderExists = context.orders.some(o => o.id === crane.currentJob!.orderId);
+      
+      if (!orderExists) {
+        // Orphaned item - create a storage job for it
+        const storeKey = findStorageSlot(
+          context.grid,
+          context.zones,
+          crane.heldItem.type,
+          { smartSorting: context.flags.smartSorting, zoneMastery: context.flags.zoneMastery },
+          context.rng
+        );
+        
+        if (storeKey) {
+          // Create emergency storage job
+          const orphanJob: TransferJob = {
+            id: `orphan-${Date.now()}`,
+            orderId: 'orphan-order',
+            jobType: 'store',
+            sourceKey: getCurrentKey(crane), // Current position
+            destKey: storeKey,
+            phase: 'MOVING_TO_DEST',
+            expectedItemType: crane.heldItem.type,
+          };
+          
+          crane.currentJob = orphanJob;
+          crane.state = 'MOVING_TO_DEST';
+          crane.movingAxis = null;  // Reset movement axis for new target
+          const destSlot = context.grid.slots.get(storeKey)!;
+          crane.targetX = destSlot.x;
+          crane.targetY = destSlot.y;
+        }
+      } else if (crane.currentJob.phase === 'MOVING_TO_DEST') {
+        // Valid job, continue to destination
+        const destSlot = context.grid.slots.get(crane.currentJob.destKey);
+        if (destSlot) {
+          crane.state = 'MOVING_TO_DEST';
+          crane.movingAxis = null;  // Reset movement axis for new target
+          crane.targetX = destSlot.x;
+          crane.targetY = destSlot.y;
+        }
+      }
+    }
+  }
+  
+  // Find available cranes (IDLE with no job and no item)
+  const availableCranes = context.cranes.filter(c => isAvailable(c));
+  if (availableCranes.length === 0) return;
+  
+  // Find orders that don't have a job assigned yet
+  const unassignedOrders = context.orders.filter(order => {
+    // Check if any crane already has a job for this order
+    return !context.cranes.some(c => 
+      c.currentJob?.orderId === order.id
+    );
+  });
+  
+  if (unassignedOrders.length === 0) return;
+  
+  // Sort by priority
+  let sortedOrders = sortOrdersByPriority(unassignedOrders);
+  
+  // Assign jobs to available cranes
+  for (const crane of availableCranes) {
+    const order = findBestOrderForCrane(crane, sortedOrders, context);
+    
+    if (order) {
+      const job = createJobForOrder(order, context, crane);
+      if (job) {
+        assignJob(crane, job);
+        // Remove this order from the pool so it's not assigned to another crane
+        sortedOrders = sortedOrders.filter(o => o.id !== order.id);
+      }
+    }
+  }
+}
+
+/**
+ * Create a TransferJob for an order
+ */
+function createJobForOrder(
+  order: Order,
+  context: SimulationContext,
+  crane: Crane
+): TransferJob | null {
+  if (order.type === 'store') {
+    // Find source (input slot with the item)
+    let sourceKey = order.sourceSlotKey;
+    
+    // Validate source slot
+    if (sourceKey) {
+      const sourceSlot = context.grid.slots.get(sourceKey);
+      if (!sourceSlot || !sourceSlot.item || sourceSlot.item.type !== order.itemType) {
+        sourceKey = null;
+      }
+    }
+    
+    // Find alternative input slot
+    if (!sourceKey) {
+      sourceKey = context.grid.inputSlots.find(key => {
+        const slot = context.grid.slots.get(key)!;
+        return slot.item?.type === order.itemType;
+      }) || null;
+    }
+    
+    if (!sourceKey) return null;
+    
+    // Find destination (storage slot)
+    const destKey = findStorageSlot(
+      context.grid,
+      context.zones,
+      order.itemType,
+      { smartSorting: context.flags.smartSorting, zoneMastery: context.flags.zoneMastery },
+      context.rng
+    );
+    
+    if (!destKey) return null;
+    
+    return createTransferJob(
+      order.id,
+      'store',
+      sourceKey,
+      destKey,
+      order.itemType
+    );
+  } else {
+    // Retrieve order
+    const sourceKey = findRetrievalSlot(
+      context.grid,
+      order.itemType,
+      context.retrievalMode,
+      context.orders,
+      crane,
+      context.rng
+    );
+    
+    if (!sourceKey) return null;
+    
+    // Destination is output area (use first output slot)
+    const destKey = context.grid.outputSlots[0];
+    if (!destKey) return null;
+    
+    return createTransferJob(
+      order.id,
+      'retrieve',
+      sourceKey,
+      destKey,
+      order.itemType
+    );
+  }
+}
+
+/**
+ * Find the best order for a crane to handle
+ */
+function findBestOrderForCrane(
+  _crane: Crane,
+  orders: Order[],
+  context: SimulationContext
+): Order | null {
+  for (const order of orders) {
+    // Check if order can be fulfilled
+    if (!canFulfillOrder(order, context.grid)) {
+      continue;
+    }
+    
+    return order;
+  }
+  
+  return null;
+}
+
+/**
+ * Handle a crane dropping off an item
+ */
+function handleDropoff(
+  orderId: string | undefined,
+  item: Item,
+  cellKey: string,
+  context: SimulationContext,
+  events: SimulationEvent[]
+): void {
+  const slot = context.grid.slots.get(cellKey)!;
+  
+  if (slot.type === 'storage') {
+    // Item stored
+    events.push({
+      type: 'ITEM_STORED',
+      timestamp: context.realTime,
+      data: { itemId: item.id, itemType: item.type, cellKey },
     });
+    context.stats.itemsStored++;
+    
+    // Find and complete store order
+    let storeOrder = context.orders.find(o => 
+      o.type === 'store' && o.id === orderId
+    );
+    
+    if (!storeOrder) {
+      storeOrder = context.orders.find(o => 
+        o.type === 'store' && o.itemType === item.type
+      );
+    }
+    
+    if (storeOrder) {
+      completeOrder(storeOrder, context, events);
+      removeOrders(context, [storeOrder]);
+    }
+  } else if (slot.type === 'output') {
+    // Item retrieved and delivered
+    events.push({
+      type: 'ITEM_RETRIEVED',
+      timestamp: context.realTime,
+      data: { itemId: item.id, itemType: item.type, cellKey },
+    });
+    context.stats.itemsRetrieved++;
+    
+    // Find and complete retrieve order
+    let retrieveOrder = context.orders.find(o => 
+      o.type === 'retrieve' && o.id === orderId
+    );
+    
+    if (!retrieveOrder) {
+      retrieveOrder = context.orders.find(o => 
+        o.type === 'retrieve' && o.itemType === item.type
+      );
+    }
+    
+    if (retrieveOrder) {
+      completeOrder(retrieveOrder, context, events);
+      removeOrders(context, [retrieveOrder]);
+    }
+  }
 }
 
-// Re-exports for convenience
-export { findBestStorageSlot, findBestRetrieval };
-export { createCrane, calculateTravelTime } from './crane';
-export type { RetrievalTarget } from './retrieval';
+/**
+ * Check if shift should end (called after each tick)
+ */
+export function checkShiftEnd(context: SimulationContext): { ended: boolean; reason: 'time' | 'hp' | null } {
+  if (context.shiftTimeRemaining <= 0) {
+    return { ended: true, reason: 'time' };
+  }
+  
+  // HP check would be done at run level
+  return { ended: false, reason: null };
+}
+
+/**
+ * Calculate shift score
+ */
+export function calculateShiftScore(context: SimulationContext): number {
+  const { stats } = context;
+  
+  let score = 0;
+  score += stats.ordersCompleted * 100;
+  score += stats.vipOrdersCompleted * 50; // Bonus for VIP
+  score -= stats.ordersFailed * 50;
+  
+  // Time bonus
+  const timeBonus = Math.floor(context.shiftTimeRemaining * 10);
+  score += timeBonus;
+  
+  return Math.max(0, score);
+}
+
+/**
+ * Generate shift result
+ */
+export function generateShiftResult(context: SimulationContext): ShiftResult {
+  return {
+    shiftNumber: context.shiftNumber,
+    completed: context.shiftTimeRemaining > 0,
+    ordersCompleted: context.stats.ordersCompleted,
+    ordersFailed: context.stats.ordersFailed,
+    vipOrdersCompleted: context.stats.vipOrdersCompleted,
+    hpLost: 0, // Tracked at run level
+    hpRecovered: 0,
+    score: calculateShiftScore(context),
+    events: [], // Events are tracked separately
+  };
+}

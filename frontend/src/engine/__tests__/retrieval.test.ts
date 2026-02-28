@@ -1,188 +1,211 @@
 import { describe, it, expect } from 'vitest';
-import { findBestRetrieval } from '../retrieval';
-import type { Grid, Order, Item } from '../types';
+import { createGrid, GridParams } from '../grid';
+import { createRng } from '../rng';
+import { findRetrievalSlot, canRetrieve, getRetrievalCandidates, estimateRetrievalTime, getRetrievableCounts } from '../retrieval';
+import { createCrane, CraneParams } from '../crane';
 
-function createGrid(width: number, height: number, ioPort = { x: 0, y: 0 }): Grid {
-    const slots = new Map();
-    for (let x = 0; x < width; x++) {
-        for (let y = 0; y < height; y++) {
-            slots.set(`${x},${y}`, {
-                x,
-                y,
-                state: 'empty' as const,
-                item: null,
-                zoneId: null,
-            });
-        }
-    }
-    return { width, height, slots, ioPort };
-}
+describe('Retrieval', () => {
+  const defaultParams: GridParams = {
+    width: 10,
+    height: 8,
+    blockedCells: 0,
+    initialInventory: 10,
+  };
+  
+  const craneParams: CraneParams = {
+    id: 'crane-1',
+    startX: 5,
+    startY: 4,
+    speed: 2,
+    transferTime: 1,
+  };
 
-function createItem(type: string, storedAt: number): Item {
-    return {
-        id: `item-${type}-${storedAt}`,
-        type: type as any,
-        storedAt,
-    };
-}
-
-function createOrder(
-    itemType: string,
-    createdAt: number,
-    deadline: number,
-    status = 'pending'
-): Order {
-    return {
-        id: `order-${itemType}-${createdAt}`,
-        itemType: itemType as any,
-        createdAt,
-        deadline,
-        status: status as any,
-    };
-}
-
-describe('findBestRetrieval', () => {
-    it('should return null when no pending orders', () => {
-        const grid = createGrid(4, 4);
-        const orders: Order[] = [
-            createOrder('red', 0, 100, 'completed'),
-            createOrder('blue', 0, 100, 'failed'),
-        ];
-
-        const result = findBestRetrieval(orders, grid, 'fifo', { x: 0, y: 0 });
-        expect(result).toBeNull();
+  describe('findRetrievalSlot', () => {
+    it('should find slot with item type', () => {
+      const rng = createRng(12345);
+      const grid = createGrid({ ...defaultParams, initialInventory: 20 }, rng);
+      const crane = createCrane(craneParams);
+      
+      // First, check what item types are in the grid
+      const retrievable = getRetrievableCounts(grid);
+      const availableTypes = Array.from(retrievable.entries())
+        .filter(([, count]) => count > 0)
+        .map(([type]) => type);
+      
+      if (availableTypes.length > 0) {
+        const itemType = availableTypes[0];
+        const slot = findRetrievalSlot(grid, itemType, 'fifo', [], crane, rng);
+        
+        expect(slot).not.toBeNull();
+        const slotData = grid.slots.get(slot!)!;
+        expect(slotData.item?.type).toBe(itemType);
+      }
     });
-
-    it('should return null when item not available', () => {
-        const grid = createGrid(4, 4);
-        const orders: Order[] = [
-            createOrder('red', 0, 100, 'pending'),
-        ];
-
-        // No items in grid
-        const result = findBestRetrieval(orders, grid, 'fifo', { x: 0, y: 0 });
-        expect(result).toBeNull();
+    
+    it('should return null when item not in storage', () => {
+      const rng = createRng(12345);
+      const grid = createGrid({ ...defaultParams, initialInventory: 0 }, rng);
+      const crane = createCrane(craneParams);
+      
+      const slot = findRetrievalSlot(grid, 'red', 'fifo', [], crane, rng);
+      
+      expect(slot).toBeNull();
     });
-
-    it('should find matching item for FIFO mode', () => {
-        const grid = createGrid(4, 4);
-        grid.slots.set('2,2', {
-            x: 2, y: 2,
-            state: 'occupied',
-            item: createItem('red', 10),
-            zoneId: null,
-        });
-
-        const orders: Order[] = [
-            createOrder('red', 0, 100, 'pending'),
-        ];
-
-        const result = findBestRetrieval(orders, grid, 'fifo', { x: 0, y: 0 });
-        expect(result).not.toBeNull();
-        expect(result!.order.itemType).toBe('red');
-        expect(result!.slot.x).toBe(2);
-        expect(result!.slot.y).toBe(2);
+    
+    it('should respect FIFO mode', () => {
+      const rng = createRng(12345);
+      const grid = createGrid({ ...defaultParams, initialInventory: 0 }, rng);
+      
+      // Manually place items with different storedAt times
+      const slot1 = grid.storageSlots[0];
+      const slot2 = grid.storageSlots[1];
+      
+      grid.slots.get(slot1)!.item = { id: 'item-1', type: 'red', storedAt: 100 };
+      grid.slots.get(slot2)!.item = { id: 'item-2', type: 'red', storedAt: 50 };
+      
+      const crane = createCrane(craneParams);
+      const found = findRetrievalSlot(grid, 'red', 'fifo', [], crane, rng);
+      
+      // FIFO should pick the oldest (lowest storedAt)
+      expect(found).toBe(slot2);
     });
-
-    it('should prioritize oldest order in FIFO mode', () => {
-        const grid = createGrid(4, 4);
-        grid.slots.set('1,1', {
-            x: 1, y: 1,
-            state: 'occupied',
-            item: createItem('blue', 10),
-            zoneId: null,
-        });
-        grid.slots.set('2,2', {
-            x: 2, y: 2,
-            state: 'occupied',
-            item: createItem('red', 10),
-            zoneId: null,
-        });
-
-        const orders: Order[] = [
-            createOrder('blue', 0, 100, 'pending'), // Oldest
-            createOrder('red', 50, 150, 'pending'), // Newer
-        ];
-
-        const result = findBestRetrieval(orders, grid, 'fifo', { x: 0, y: 0 });
-        expect(result).not.toBeNull();
-        expect(result!.order.itemType).toBe('blue');
+    
+    it('should respect nearest mode', () => {
+      const rng = createRng(12345);
+      const grid = createGrid({ ...defaultParams, initialInventory: 0 }, rng);
+      
+      // Place items at different distances from crane
+      const crane = createCrane({ ...craneParams, startX: 5, startY: 4 });
+      
+      // Find slots at specific distances
+      let closeSlot: string | null = null;
+      let farSlot: string | null = null;
+      
+      for (const key of grid.storageSlots) {
+        const slot = grid.slots.get(key)!;
+        const dist = Math.abs(slot.x - 5) + Math.abs(slot.y - 4);
+        if (dist <= 2 && !closeSlot) closeSlot = key;
+        if (dist >= 6 && !farSlot) farSlot = key;
+      }
+      
+      if (closeSlot && farSlot) {
+        grid.slots.get(closeSlot)!.item = { id: 'item-1', type: 'blue', storedAt: 0 };
+        grid.slots.get(farSlot)!.item = { id: 'item-2', type: 'blue', storedAt: 0 };
+        
+        const found = findRetrievalSlot(grid, 'blue', 'nearest', [], crane, rng);
+        expect(found).toBe(closeSlot);
+      }
     });
+  });
 
-    it('should prioritize earliest deadline in deadline mode', () => {
-        const grid = createGrid(4, 4);
-        grid.slots.set('1,1', {
-            x: 1, y: 1,
-            state: 'occupied',
-            item: createItem('blue', 10),
-            zoneId: null,
-        });
-        grid.slots.set('2,2', {
-            x: 2, y: 2,
-            state: 'occupied',
-            item: createItem('red', 10),
-            zoneId: null,
-        });
-
-        const orders: Order[] = [
-            createOrder('blue', 0, 200, 'pending'), // Later deadline
-            createOrder('red', 50, 100, 'pending'), // Earlier deadline
-        ];
-
-        const result = findBestRetrieval(orders, grid, 'deadline', { x: 0, y: 0 });
-        expect(result).not.toBeNull();
-        expect(result!.order.itemType).toBe('red');
+  describe('canRetrieve', () => {
+    it('should return true when item available', () => {
+      const rng = createRng(12345);
+      const grid = createGrid({ ...defaultParams, initialInventory: 10 }, rng);
+      
+      const retrievable = getRetrievableCounts(grid);
+      const availableTypes = Array.from(retrievable.entries())
+        .filter(([, count]) => count > 0)
+        .map(([type]) => type);
+      
+      if (availableTypes.length > 0) {
+        expect(canRetrieve(grid, availableTypes[0])).toBe(true);
+      }
     });
-
-    it('should pick oldest item when multiple available for same order', () => {
-        const grid = createGrid(4, 4);
-        grid.slots.set('1,1', {
-            x: 1, y: 1,
-            state: 'occupied',
-            item: createItem('red', 50), // Newer
-            zoneId: null,
-        });
-        grid.slots.set('2,2', {
-            x: 2, y: 2,
-            state: 'occupied',
-            item: createItem('red', 10), // Older (should be picked)
-            zoneId: null,
-        });
-
-        const orders: Order[] = [
-            createOrder('red', 0, 100, 'pending'),
-        ];
-
-        const result = findBestRetrieval(orders, grid, 'fifo', { x: 0, y: 0 });
-        expect(result).not.toBeNull();
-        expect(result!.slot.x).toBe(2);
-        expect(result!.slot.y).toBe(2);
+    
+    it('should return false when item not available', () => {
+      const rng = createRng(12345);
+      const grid = createGrid({ ...defaultParams, initialInventory: 0 }, rng);
+      
+      expect(canRetrieve(grid, 'red')).toBe(false);
     });
+  });
 
-    it('should pick closest item in nearest mode', () => {
-        const grid = createGrid(4, 4);
-        const cranePos = { x: 0, y: 0 };
-
-        grid.slots.set('3,3', {
-            x: 3, y: 3,
-            state: 'occupied',
-            item: createItem('red', 10),
-            zoneId: null,
-        });
-        grid.slots.set('1,1', {
-            x: 1, y: 1,
-            state: 'occupied',
-            item: createItem('red', 50), // Newer but closer
-            zoneId: null,
-        });
-
-        const orders: Order[] = [
-            createOrder('red', 0, 100, 'pending'),
-        ];
-
-        const result = findBestRetrieval(orders, grid, 'nearest', cranePos);
-        expect(result).not.toBeNull();
-        expect(result!.slot.x).toBe(1); // Closest to (0,0)
-        expect(result!.slot.y).toBe(1);
+  describe('getRetrievalCandidates', () => {
+    it('should return all slots with item type', () => {
+      const rng = createRng(12345);
+      const grid = createGrid({ ...defaultParams, initialInventory: 0 }, rng);
+      const crane = createCrane(craneParams);
+      
+      // Place multiple items of same type
+      const slot1 = grid.storageSlots[0];
+      const slot2 = grid.storageSlots[1];
+      const slot3 = grid.storageSlots[2];
+      
+      grid.slots.get(slot1)!.item = { id: 'item-1', type: 'red', storedAt: 0 };
+      grid.slots.get(slot2)!.item = { id: 'item-2', type: 'red', storedAt: 0 };
+      grid.slots.get(slot3)!.item = { id: 'item-3', type: 'blue', storedAt: 0 };
+      
+      const candidates = getRetrievalCandidates(grid, 'red', 'fifo', crane);
+      
+      expect(candidates).toHaveLength(2);
+      expect(candidates).toContain(slot1);
+      expect(candidates).toContain(slot2);
     });
+    
+    it('should sort by FIFO', () => {
+      const rng = createRng(12345);
+      const grid = createGrid({ ...defaultParams, initialInventory: 0 }, rng);
+      const crane = createCrane(craneParams);
+      
+      const slot1 = grid.storageSlots[0];
+      const slot2 = grid.storageSlots[1];
+      
+      grid.slots.get(slot1)!.item = { id: 'item-1', type: 'red', storedAt: 200 };
+      grid.slots.get(slot2)!.item = { id: 'item-2', type: 'red', storedAt: 100 };
+      
+      const candidates = getRetrievalCandidates(grid, 'red', 'fifo', crane);
+      
+      // FIFO: oldest first (lowest storedAt)
+      expect(candidates[0]).toBe(slot2);
+      expect(candidates[1]).toBe(slot1);
+    });
+  });
+
+  describe('estimateRetrievalTime', () => {
+    it('should return Infinity when item not available', () => {
+      const rng = createRng(12345);
+      const grid = createGrid({ ...defaultParams, initialInventory: 0 }, rng);
+      const crane = createCrane(craneParams);
+      
+      const time = estimateRetrievalTime(grid, 'red', 'fifo', crane, 2);
+      
+      expect(time).toBe(Infinity);
+    });
+    
+    it('should estimate time for available item', () => {
+      const rng = createRng(12345);
+      const grid = createGrid({ ...defaultParams, initialInventory: 0 }, rng);
+      const crane = createCrane({ ...craneParams, startX: 5, startY: 4 });
+      
+      // Place item nearby
+      const slot = grid.storageSlots.find(key => {
+        const s = grid.slots.get(key)!;
+        return Math.abs(s.x - 5) + Math.abs(s.y - 4) <= 2;
+      })!;
+      
+      grid.slots.get(slot)!.item = { id: 'item-1', type: 'red', storedAt: 0 };
+      
+      const time = estimateRetrievalTime(grid, 'red', 'fifo', crane, 2);
+      
+      expect(Number.isFinite(time)).toBe(true);
+      expect(time).toBeGreaterThan(0);
+    });
+  });
+
+  describe('getRetrievableCounts', () => {
+    it('should count items by type', () => {
+      const rng = createRng(12345);
+      const grid = createGrid({ ...defaultParams, initialInventory: 20 }, rng);
+      
+      const counts = getRetrievableCounts(grid);
+      
+      let total = 0;
+      for (const count of counts.values()) {
+        total += count;
+      }
+      
+      expect(total).toBe(20);
+    });
+  });
 });

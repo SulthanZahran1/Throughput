@@ -1,163 +1,269 @@
 import { describe, it, expect } from 'vitest';
-import {
-    createCrane,
-    calculateTravelTime,
-    moveCrane,
-    tickCrane,
-    startStoreMission,
-    startRetrieveMission,
-} from '../crane';
-import type { Grid } from '../types';
+import { createCrane, isAvailable, isHolding, getCurrentKey, getEstimatedCompletionTime, tickCrane, createTransferJob, assignJob, CraneParams } from '../crane';
+import { createGrid } from '../grid';
+import { createRng } from '../rng';
 
-function createGrid(width: number, height: number, ioPort = { x: 0, y: 0 }): Grid {
-    const slots = new Map();
-    for (let x = 0; x < width; x++) {
-        for (let y = 0; y < height; y++) {
-            slots.set(`${x},${y}`, {
-                x,
-                y,
-                state: 'empty' as const,
-                item: null,
-                zoneId: null,
-            });
-        }
-    }
-    return { width, height, slots, ioPort };
-}
+describe('Crane', () => {
+  const defaultParams: CraneParams = {
+    id: 'crane-1',
+    startX: 5,
+    startY: 4,
+    speed: 2,
+    transferTime: 1,
+  };
 
-describe('createCrane', () => {
-    it('should create crane at position with IDLE state', () => {
-        const crane = createCrane(5, 5);
-
-        expect(crane.x).toBe(5);
-        expect(crane.y).toBe(5);
-        expect(crane.state).toBe('IDLE');
-        expect(crane.carrying).toBeNull();
-        expect(crane.mission).toBeNull();
-        expect(crane.busyTimeRemaining).toBe(0);
+  describe('createCrane', () => {
+    it('should create crane with correct initial state', () => {
+      const crane = createCrane(defaultParams);
+      
+      expect(crane.id).toBe('crane-1');
+      expect(crane.x).toBe(5);
+      expect(crane.y).toBe(4);
+      expect(crane.targetX).toBe(5);
+      expect(crane.targetY).toBe(4);
+      expect(crane.state).toBe('IDLE');
+      expect(crane.heldItem).toBeNull();
+      expect(crane.transferProgress).toBe(0);
+      expect(crane.transferTime).toBe(1);
+      expect(crane.currentJob).toBeNull();
     });
-});
+  });
 
-describe('calculateTravelTime', () => {
-    it('should calculate correct travel time for horizontal move', () => {
-        const time = calculateTravelTime(0, 0, 3, 0, 3); // 3 cells at 3 cells/sec
-        expect(time).toBe(1);
+  describe('createTransferJob', () => {
+    it('should create a job with correct properties', () => {
+      const job = createTransferJob('order-1', 'store', '1,0', '3,3', 'red');
+      
+      expect(job.orderId).toBe('order-1');
+      expect(job.jobType).toBe('store');
+      expect(job.sourceKey).toBe('1,0');
+      expect(job.destKey).toBe('3,3');
+      expect(job.expectedItemType).toBe('red');
+      expect(job.phase).toBe('MOVING_TO_SOURCE');
     });
+  });
 
-    it('should calculate correct travel time for vertical move', () => {
-        const time = calculateTravelTime(0, 0, 0, 6, 3); // 6 cells at 3 cells/sec
-        expect(time).toBe(2);
+  describe('assignJob', () => {
+    it('should assign job to IDLE crane', () => {
+      const crane = createCrane(defaultParams);
+      const job = createTransferJob('order-1', 'store', '1,0', '3,3', 'red');
+      
+      const result = assignJob(crane, job);
+      
+      expect(result).toBe(true);
+      expect(crane.currentJob).toBe(job);
+      expect(crane.state).toBe('MOVING_TO_SOURCE');
+      expect(crane.targetX).toBe(1); // source position
+      expect(crane.targetY).toBe(0);
     });
-
-    it('should calculate correct travel time for diagonal move', () => {
-        // Diagonal moves max(dx, dy)
-        const time = calculateTravelTime(0, 0, 3, 3, 3); // max(3,3) = 3 cells
-        expect(time).toBe(1);
+    
+    it('should fail to assign job to busy crane', () => {
+      const crane = createCrane(defaultParams);
+      const job1 = createTransferJob('order-1', 'store', '1,0', '3,3', 'red');
+      const job2 = createTransferJob('order-2', 'retrieve', '2,2', '4,7', 'blue');
+      
+      assignJob(crane, job1);
+      const result = assignJob(crane, job2);
+      
+      expect(result).toBe(false);
+      expect(crane.currentJob).toBe(job1);
     });
-
-    it('should use default speed when not specified', () => {
-        const time = calculateTravelTime(0, 0, 3, 0); // default speed is 3
-        expect(time).toBe(1);
+    
+    it('should fail to assign job to crane holding item', () => {
+      const crane = createCrane(defaultParams);
+      crane.heldItem = { id: 'item-1', type: 'red', storedAt: 0 };
+      const job = createTransferJob('order-1', 'store', '1,0', '3,3', 'red');
+      
+      const result = assignJob(crane, job);
+      
+      expect(result).toBe(false);
     });
-});
+  });
 
-describe('moveCrane', () => {
-    it('should set crane to MOVING state', () => {
-        const crane = createCrane(0, 0);
-        const moved = moveCrane(crane, { targetX: 3, targetY: 0 });
-
-        expect(moved.state).toBe('MOVING');
-        expect(moved.busyTimeRemaining).toBe(1); // 3 cells / 3 speed
+  describe('isAvailable', () => {
+    it('should return true when IDLE and not holding', () => {
+      const crane = createCrane(defaultParams);
+      expect(isAvailable(crane)).toBe(true);
     });
-
-    it('should keep current position until arrival', () => {
-        const crane = createCrane(0, 0);
-        const moved = moveCrane(crane, { targetX: 5, targetY: 5 });
-
-        expect(moved.x).toBe(0);
-        expect(moved.y).toBe(0);
+    
+    it('should return false when has job', () => {
+      const crane = createCrane(defaultParams);
+      const job = createTransferJob('order-1', 'store', '1,0', '3,3', 'red');
+      assignJob(crane, job);
+      
+      expect(isAvailable(crane)).toBe(false);
     });
-});
-
-describe('tickCrane', () => {
-    it('should not change IDLE crane', () => {
-        const crane = createCrane(0, 0);
-        const result = tickCrane(crane, 0.1, { grid: createGrid(4, 4), onNeedStoreTarget: () => null });
-
-        expect(result.crane.state).toBe('IDLE');
-        expect(result.action).toBeUndefined();
+    
+    it('should return false when holding item', () => {
+      const crane = createCrane(defaultParams);
+      crane.heldItem = { id: 'item-1', type: 'red', storedAt: 0 };
+      expect(isAvailable(crane)).toBe(false);
     });
+  });
 
-    it('should reduce busy time when MOVING', () => {
-        const crane = moveCrane(createCrane(0, 0), { targetX: 3, targetY: 0 });
-        expect(crane.busyTimeRemaining).toBe(1);
-
-        const result = tickCrane(crane, 0.3, { grid: createGrid(4, 4), onNeedStoreTarget: () => null });
-
-        expect(result.crane.state).toBe('MOVING');
-        expect(result.crane.busyTimeRemaining).toBeCloseTo(0.7);
+  describe('isHolding', () => {
+    it('should return false when empty', () => {
+      const crane = createCrane(defaultParams);
+      expect(isHolding(crane)).toBe(false);
     });
-
-    it('should transition to TRANSFERRING when move completes', () => {
-        const crane = moveCrane(createCrane(0, 0), { targetX: 3, targetY: 0 });
-
-        const result = tickCrane(crane, 1.1, { grid: createGrid(4, 4), onNeedStoreTarget: () => null });
-
-        expect(result.crane.state).toBe('TRANSFERRING');
-        expect(result.crane.x).toBe(3); // Position updated
-        expect(result.crane.y).toBe(0);
-        expect(result.action?.type).toBe('ARRIVED');
+    
+    it('should return true when holding item', () => {
+      const crane = createCrane(defaultParams);
+      crane.heldItem = { id: 'item-1', type: 'red', storedAt: 0 };
+      expect(isHolding(crane)).toBe(true);
     });
+  });
 
-    it('should stay BUSY when transferring', () => {
-        const crane = moveCrane(createCrane(0, 0), { targetX: 3, targetY: 0 });
-        const arrived = tickCrane(crane, 1.1, { grid: createGrid(4, 4), onNeedStoreTarget: () => null });
-
-        expect(arrived.crane.state).toBe('TRANSFERRING');
-        expect(arrived.crane.busyTimeRemaining).toBe(0.5); // ACTION_DELAY
+  describe('getCurrentKey', () => {
+    it('should return current position as key', () => {
+      const crane = createCrane(defaultParams);
+      expect(getCurrentKey(crane)).toBe('5,4');
     });
-});
+  });
 
-describe('startStoreMission', () => {
-    it('should start mission from current position to IO', () => {
-        const grid = createGrid(4, 4, { x: 0, y: 0 });
-        const crane = createCrane(3, 3);
-
-        const mission = startStoreMission(crane, grid);
-
-        expect(mission.state).toBe('MOVING');
-        expect(mission.mission?.type).toBe('STORE');
-        expect(mission.mission?.targetX).toBe(0);
-        expect(mission.mission?.targetY).toBe(0);
+  describe('tickCrane', () => {
+    it('should stay IDLE when no job', () => {
+      const rng = createRng(12345);
+      const grid = createGrid({ width: 10, height: 8, blockedCells: 0, initialInventory: 0 }, rng);
+      const crane = createCrane(defaultParams);
+      
+      const result = tickCrane(crane, 1, grid, { 
+        afterburners: false, overclocked: false, dualCommand: false,
+        conveyorBelt: false, smartSorting: false, zoneMastery: false,
+        vipClients: false, timeWarp: false, emergencyBrake: false,
+        predictivePathing: false, blockedCells: 0, multiCrane: 1
+      });
+      
+      expect(result).toBeNull();
+      expect(crane.state).toBe('IDLE');
     });
-
-    it('should immediately start transferring if already at IO', () => {
-        const grid = createGrid(4, 4, { x: 0, y: 0 });
-        const crane = createCrane(0, 0);
-
-        const mission = startStoreMission(crane, grid);
-
-        expect(mission.state).toBe('TRANSFERRING');
+    
+    it('should move towards source when job assigned', () => {
+      const rng = createRng(12345);
+      const grid = createGrid({ width: 10, height: 8, blockedCells: 0, initialInventory: 0 }, rng);
+      const crane = createCrane(defaultParams);
+      const job = createTransferJob('order-1', 'store', '7,4', '3,3', 'red');
+      
+      // Place item at source
+      grid.slots.get('7,4')!.item = { id: 'item-1', type: 'red', storedAt: 0 };
+      
+      assignJob(crane, job);
+      
+      tickCrane(crane, 0.5, grid, { 
+        afterburners: false, overclocked: false, dualCommand: false,
+        conveyorBelt: false, smartSorting: false, zoneMastery: false,
+        vipClients: false, timeWarp: false, emergencyBrake: false,
+        predictivePathing: false, blockedCells: 0, multiCrane: 1
+      });
+      
+      expect(crane.x).toBeGreaterThan(5);
+      expect(crane.state).toBe('MOVING_TO_SOURCE');
     });
-});
-
-describe('startRetrieveMission', () => {
-    it('should start mission to target slot', () => {
-        const crane = createCrane(0, 0);
-
-        const mission = startRetrieveMission(crane, 3, 3);
-
-        expect(mission.state).toBe('MOVING');
-        expect(mission.mission?.type).toBe('RETRIEVE');
-        expect(mission.mission?.targetX).toBe(3);
-        expect(mission.mission?.targetY).toBe(3);
+    
+    it('should arrive at source and start ACQUIRING', () => {
+      const rng = createRng(12345);
+      const grid = createGrid({ width: 10, height: 8, blockedCells: 0, initialInventory: 0 }, rng);
+      const crane = createCrane({ ...defaultParams, startX: 5, startY: 4 });
+      const job = createTransferJob('order-1', 'store', '6,4', '3,3', 'red');
+      
+      // Place item at source (1 cell away)
+      grid.slots.get('6,4')!.item = { id: 'item-1', type: 'red', storedAt: 0 };
+      
+      assignJob(crane, job);
+      
+      // Move for enough time to arrive (1 cell at 2 cells/sec = 0.5s)
+      tickCrane(crane, 0.6, grid, { 
+        afterburners: false, overclocked: false, dualCommand: false,
+        conveyorBelt: false, smartSorting: false, zoneMastery: false,
+        vipClients: false, timeWarp: false, emergencyBrake: false,
+        predictivePathing: false, blockedCells: 0, multiCrane: 1
+      });
+      
+      expect(crane.state).toBe('ACQUIRING');
+      expect(crane.transferProgress).toBe(0);
     });
-
-    it('should immediately start transferring if already at target', () => {
-        const crane = createCrane(2, 2);
-
-        const mission = startRetrieveMission(crane, 2, 2);
-
-        expect(mission.state).toBe('TRANSFERRING');
+    
+    it('should complete ACQUIRING and transition to MOVING_TO_DEST', () => {
+      const rng = createRng(12345);
+      const gridParams = { width: 10, height: 8, blockedCells: 0, initialInventory: 0 };
+      const grid = createGrid(gridParams, rng);
+      
+      // Setup: crane at source with item ready
+      const storageKey = grid.storageSlots[0];
+      const sourceKey = '5,4';
+      
+      const crane = createCrane({ ...defaultParams, startX: 5, startY: 4 });
+      const job = createTransferJob('order-1', 'store', sourceKey, storageKey, 'red');
+      
+      // Place item at source
+      grid.slots.get(sourceKey)!.item = { id: 'item-1', type: 'red', storedAt: 0 };
+      
+      assignJob(crane, job);
+      
+      // Force to ACQUIRING state
+      crane.state = 'ACQUIRING';
+      crane.transferProgress = 0;
+      
+      // Complete transfer
+      const result = tickCrane(crane, 1, grid, { 
+        afterburners: false, overclocked: false, dualCommand: false,
+        conveyorBelt: false, smartSorting: false, zoneMastery: false,
+        vipClients: false, timeWarp: false, emergencyBrake: false,
+        predictivePathing: false, blockedCells: 0, multiCrane: 1
+      });
+      
+      expect(result?.event).toBe('pickup_complete');
+      expect(crane.state).toBe('MOVING_TO_DEST');
+      expect(crane.heldItem).not.toBeNull();
     });
+    
+    it('should complete DEPOSITING and finish job', () => {
+      const rng = createRng(12345);
+      const gridParams = { width: 10, height: 8, blockedCells: 0, initialInventory: 0 };
+      const grid = createGrid(gridParams, rng);
+      
+      const storageKey = grid.storageSlots[0];
+      const storageSlot = grid.slots.get(storageKey)!;
+      const sourceKey = '5,4';
+      
+      const crane = createCrane({ ...defaultParams, startX: storageSlot.x, startY: storageSlot.y });
+      crane.heldItem = { id: 'item-1', type: 'red', storedAt: 0 };
+      
+      const job = createTransferJob('order-1', 'store', sourceKey, storageKey, 'red');
+      crane.currentJob = job;
+      crane.state = 'DEPOSITING';
+      crane.transferProgress = 0;
+      
+      // Complete dropoff
+      const result = tickCrane(crane, 1, grid, { 
+        afterburners: false, overclocked: false, dualCommand: false,
+        conveyorBelt: false, smartSorting: false, zoneMastery: false,
+        vipClients: false, timeWarp: false, emergencyBrake: false,
+        predictivePathing: false, blockedCells: 0, multiCrane: 1
+      });
+      
+      expect(result?.event).toBe('dropoff_complete');
+      expect(crane.state).toBe('IDLE');
+      expect(crane.heldItem).toBeNull();
+      expect(crane.currentJob).toBeNull();
+      expect(storageSlot.item).not.toBeNull();
+    });
+  });
+
+  describe('getEstimatedCompletionTime', () => {
+    it('should return 0 when IDLE', () => {
+      const crane = createCrane(defaultParams);
+      expect(getEstimatedCompletionTime(crane, { afterburners: false })).toBe(0);
+    });
+    
+    it('should estimate time for MOVING_TO_SOURCE crane', () => {
+      const crane = createCrane(defaultParams);
+      const job = createTransferJob('order-1', 'store', '7,4', '3,3', 'red');
+      assignJob(crane, job);
+      
+      const time = getEstimatedCompletionTime(crane, { afterburners: false });
+      
+      // 2 cells at 2 cells/sec = 1 sec move + 1 sec transfer + move to dest + 1 sec transfer
+      expect(time).toBeGreaterThan(1);
+    });
+  });
 });

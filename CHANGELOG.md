@@ -4,9 +4,196 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### Fixed
+- **Run Progression Order Totals** - Restored order completion/failure tracking in engine stats
+  - `completeOrder()` now increments `ordersCompleted`
+  - `updateOrders()` now increments `ordersFailed` for expired orders
+  - `createSimulationContext()` now persists `orderDeadlineBase` into runtime context
+  - `trySpawnOrder()` now uses shift-specific `orderDeadlineBase` instead of a hardcoded default
+  - Hard-mode spawn scaling was tuned to preserve difficulty pressure without granting a free extra completion in 1-second simulation steps
+
+- **Multiple Crane Assignment Bug** - Fixed issue where multiple cranes could be assigned the same order
+  - Root cause: `assignJobsToCranes()` filtered unassigned orders once, then iterated through all available cranes
+  - Each crane got the same "best" order because assigned orders weren't removed from the pool
+  - Solution: Filter out assigned orders from `sortedOrders` after each successful job assignment
+  - Added 2 new integration tests to verify unique order-to-crane mapping
+
+### Added
+- **Manhattan/Grid-Based Crane Movement** - Cranes now move only horizontally or vertically (no diagonals)
+  - New `movingAxis` field on `Crane` type tracks current movement direction ('x', 'y', or null)
+  - Cranes move horizontally first, then vertically to reach targets
+  - Ensures realistic warehouse robot movement patterns
+  - Updated `moveTowards()` function with axis-locked movement logic
+
+- **Job-Based Crane FSM** - Complete redesign of crane state machine
+  - New `TransferJob` type encapsulates full job lifecycle
+  - Job phases: `MOVING_TO_SOURCE` → `ACQUIRING` → `MOVING_TO_DEST` → `DEPOSITING`
+  - Crane never goes IDLE while holding an item with a job
+  - Automatic transition from pickup to delivery - no gaps
+  - `createTransferJob()` - Factory for creating jobs
+  - `assignJob()` - Assigns job to IDLE crane
+  - Updated all crane states: `IDLE`, `MOVING_TO_SOURCE`, `ACQUIRING`, `MOVING_TO_DEST`, `DEPOSITING`
+
+- **Crane State Display** - System logs now show real-time crane status
+  - `GameScreen.tsx` displays each crane's current state
+  - States: STANDBY (idle), MOVING, ACQUIRING (picking up), DEPOSITING (dropping off), HOLDING
+  - Color-coded status: yellow (holding), blue (moving), cyan (acquiring), green (depositing)
+  - Transfer progress percentage shown during ACQUIRING/DEPOSITING
+
+- **Robust Integration Tests** - Added comprehensive integration test suite
+  - `engine/__tests__/integration.test.ts` - 18 integration tests
+  - Tests for full order lifecycles (store and retrieve)
+  - Tests for crane assignment, pickup, and dropoff
+  - Tests for orphaned crane handling
+  - Tests for edge cases (rapid spawning, shift timeout)
+
+### Fixed
+- **Shift Transition Loading Bug** - Fixed game stuck on "Loading..." after picking upgrade
+  - Root cause: `PreShiftScreen` navigated to 'game' without initializing simulation context
+  - Solution: Added `handleBeginOperation()` to `PreShiftScreen` that initializes shift before navigation
+  - Uses same initialization logic as `MainMenuScreen` for consistency
+
+- **3x Slower Game Time** - Fixed critical timing bug caused by unstable callbacks
+  - Root cause: `onTick`, `onShiftEnd`, `onHpLoss` callbacks recreated every render
+  - These were in `useGameLoop` dependency array, causing effect restart every render
+  - Effect restart reset `lastTimeRef.current = 0`, losing that frame's delta time
+  - React StrictMode + frequent re-renders = ~2/3 of frames lost = 3x slower
+  - Solution: Wrapped all callbacks in `useCallback` in `GameScreen.tsx`
+
+- **Timing Architecture** - Fixed delta time handling to prevent time loss during lag
+  - Removed hard `maxDelta` cap that was dropping time on tab switches
+  - Implemented proper fixed timestep with catch-up: up to 10 steps per frame
+  - Accumulator now caps at 10× targetDelta instead of discarding excess time
+  - Creates brief "slow motion" effect during catch-up instead of losing game time
+  - `useGameLoop.ts` now processes multiple ticks per frame when behind
+
+- **Shift End Transition** - Fixed game freezing after shift ends
+  - Moved shift end handling directly into `GameScreen.tsx` via `handleShiftEnd` callback
+  - Eliminated race condition between `useGameLoop` and `useShiftEnd` effect
+  - `onShiftEnd` now directly triggers navigation to upgrade pick / victory / run over screens
+  - **Added missing `generateOffering` call** - Card offerings are now generated before navigating to upgrade pick screen
+  
+- **Shift End Detection** - Fixed shift not transitioning when timer hits zero
+  - `useGameLoop.ts` now calls `onTick` to update store with final context before stopping loop
+  
+- **Store Order Item Spawning** - Items now spawn in input slots when store orders are created
+  - `createStoreOrder()` now places item in available input slot
+  - Crane assignment uses `sourceSlotKey` to find the correct input slot
+  - Prevents "robot stuck on acquiring" issue
+  
+- **Orphaned Crane Handling** - Cranes with expired orders no longer get stuck
+  - `isAvailable()` now clears stale order assignments
+  - `assignTasksToCranes()` handles orphaned items (crane holding item with no valid order)
+  - Orphaned items are automatically sent to storage
+
+- **Store Order Completion** - Fixed crane getting stuck after pickup
+  - `assignTasksToCranes()` now continues store orders to storage after pickup
+  - Crane with `taskType='store'` and `reservedKey` automatically moves to storage slot
+  - Fixes the "stuck in HOLDING" issue for store orders
+
+- **Order Completion Matching** - Fixed retrieve order completion logic
+  - `handleDropoff()` now properly matches orders by ID first, then falls back to item type
+  - Ensures orders complete even when crane's order ID doesn't match
+
 ### Changed
 - Updated `plan.md` to include Phase 3.5 (Architecture Refactor) and reference `REFACTOR_PLAN.md`
 - Adjusted timeline for Phases 4-6 to accommodate refactoring work
+
+### Test Summary
+- **128 total unit tests** (added 18 integration tests, 2 new crane tests)
+- All tests passing
+
+## [Roguelite Rebuild Phases 0-3] - 2026-02-24
+
+### Added
+- **Phase 0: Cleanup**: Deleted all contents of `frontend/src/` and old backend files
+  - Removed old levels, progress tables, seeder code
+  - Created fresh directory structure
+
+- **Phase 1: Seeded RNG + Engine Types**
+  - `engine/rng.ts` - Mulberry32 seeded PRNG with full test coverage
+    - Deterministic sequence from same seed
+    - `nextFloat`, `nextInt`, `nextItem`, `nextWeighted`, `shuffle`, `fork`
+  - `engine/types.ts` - Complete type definitions
+    - Grid, Slot, Zone, Crane, Order, Item types
+    - SimulationFlags for upgrades/modifiers
+    - SimulationContext, TickResult, SimulationEvent
+    - ShiftParameters, ShiftResult, RunState, MetaState
+  - 22 unit tests for RNG proving determinism
+
+- **Phase 2: Grid + Crane + Storage + Retrieval**
+  - `engine/grid.ts` - Grid creation with zones and blocked cells
+    - Input/output area generation
+    - Zone-based storage with priority system
+    - Initial inventory placement
+  - `engine/crane.ts` - Crane FSM (IDLE/MOVING/TRANSFERRING)
+    - Move and transfer timing
+    - Target reservation for collision avoidance
+    - Afterburner speed support
+  - `engine/storage.ts` - Zone-priority storage logic
+    - Smart sorting by zone priority
+    - Zone mastery for item-type zones
+    - Load balancing across zones
+  - `engine/retrieval.ts` - Three retrieval modes
+    - FIFO (oldest first)
+    - Deadline (closest to output)
+    - Nearest (to crane position)
+  - 57 unit tests for grid, crane, storage, retrieval
+
+- **Phase 3: Order Generation**
+  - `engine/orders.ts` - Order lifecycle management
+    - Store and retrieve order generation
+    - VIP orders with shorter deadlines
+    - Automatic store/retrieve balance based on utilization
+    - Order priority scoring and sorting
+    - Deadline tracking and expiration
+  - 16 unit tests for order management
+
+### Test Summary
+- **95 total unit tests** across all engine modules
+- All tests passing with deterministic behavior verified
+
+## [Roguelite Rebuild Phases 4-8] - 2026-02-24
+
+### Added
+- **Phase 4: Simulation Tick**
+  - `engine/simulation.ts` - Main game loop
+  - `createSimulationContext()` - Initialize simulation
+  - `tickSimulation()` - Advance simulation by delta time
+  - Order spawning, crane assignment, event generation
+  - Shift end detection
+
+- **Phase 5: Data Layer**
+  - `data/upgrades.ts` - 18 upgrade definitions with rarity/cost
+  - `data/modifiers.ts` - 9 challenge modifiers
+  - `data/escalation.ts` - 8-shift difficulty progression table
+  - `data/milestones.ts` - Achievement system
+
+- **Phase 6: Zustand Stores**
+  - `store/uiStore.ts` - Screen navigation, pause state
+  - `store/gameStore.ts` - Per-shift simulation state
+  - `store/runStore.ts` - Run-wide state (HP, upgrades, modifiers)
+  - `store/metaStore.ts` - Persistent progression (crates, unlocks)
+  - `utils/coordinates.ts` - Position/distance helpers
+  - `utils/formatters.ts` - Time/number formatting
+
+- **Phase 7: Game Loop**
+  - `hooks/useGameLoop.ts` - RAF bridge to tickSimulation
+  - `hooks/useShiftEnd.ts` - Detects shift end, transitions screens
+
+- **Phase 8: Core Screens**
+  - `components/screens/MainMenuScreen.tsx` - Start runs, view stats
+  - `components/screens/GameScreen.tsx` - Grid, orders, stats
+  - `App.tsx` - Screen router with AnimatePresence
+  - Placeholder screens for Pre-Shift, Upgrade Pick, Victory, Run Over
+
+### Build
+- Production build compiles successfully
+- 351KB bundle size (gzipped: 112KB)
+
+### Test Summary (Final)
+- **107 total unit tests**
+- All tests passing
 
 ## [Phase 3.5] - 2026-02-21
 

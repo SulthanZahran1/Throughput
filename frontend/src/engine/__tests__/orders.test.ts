@@ -1,218 +1,367 @@
 import { describe, it, expect } from 'vitest';
-import { updateOrderDeadlines, generateOrders } from '../orders';
-import type { Order, OrderWave, ItemType } from '../types';
+import { createGrid, GridParams } from '../grid';
+import { createRng } from '../rng';
+import { trySpawnOrder, updateOrders, completeOrder, removeOrders, getOrderPriorityScore, sortOrdersByPriority, getUrgentOrders, canFulfillOrder, getOrderStats } from '../orders';
+import type { SimulationContext, Order, SimulationEvent } from '../types';
 
-function createOrder(
-    itemType: ItemType,
-    createdAt: number,
-    deadline: number,
-    status: Order['status'] = 'pending'
-): Order {
+describe('Orders', () => {
+  const gridParams: GridParams = {
+    width: 10,
+    height: 8,
+    blockedCells: 0,
+    initialInventory: 10,
+  };
+
+  function createTestContext(overrides: Partial<SimulationContext> = {}): SimulationContext {
+    const rng = createRng(12345);
+    const grid = createGrid(gridParams, rng);
+    
     return {
-        id: `order-${itemType}-${createdAt}`,
-        itemType,
-        createdAt,
-        deadline,
-        status,
-    };
-}
+      seed: 12345,
+      shiftNumber: 1,
+      difficulty: 'normal',
+      shiftTimeRemaining: 120,
+      totalShiftTime: 120,
+      realTime: 0,
+      grid,
+      cranes: [],
+      orders: [],
+      zones: [],
+      inventory: new Map(),
+      flags: {
+        dualCommand: false,
+        afterburners: false,
+        overclocked: false,
+        conveyorBelt: false,
+        smartSorting: false,
+        zoneMastery: false,
+        vipClients: false,
+        timeWarp: false,
+        emergencyBrake: false,
+        predictivePathing: false,
+        blockedCells: 0,
+        multiCrane: 1,
+      },
+      retrievalMode: 'fifo',
+      orderSpawnRate: 5,
+      lastOrderTime: -10,
+      rng,
+      stats: {
+        ordersCompleted: 0,
+        ordersFailed: 0,
+        itemsStored: 0,
+        itemsRetrieved: 0,
+        vipOrdersCompleted: 0,
+      },
+      shiftParameters: {
+        orderDeadlineBase: 30,
+      },
+      ...overrides,
+    } as SimulationContext;
+  }
 
-describe('updateOrderDeadlines', () => {
-    it('should mark expired orders as failed', () => {
-        const orders: Order[] = [
-            createOrder('red', 0, 10, 'pending'), // deadline passed
-            createOrder('blue', 0, 20, 'pending'), // still has time
-        ];
-
-        const result = updateOrderDeadlines(orders, 15);
-
-        expect(result.orders[0].status).toBe('failed');
-        expect(result.orders[1].status).toBe('pending');
-        expect(result.justFailed).toBe(1);
+  describe('trySpawnOrder', () => {
+    it('should spawn order when enough time passed', () => {
+      const context = createTestContext({ lastOrderTime: -10, realTime: 0 });
+      const events: SimulationEvent[] = [];
+      
+      const order = trySpawnOrder(context, events);
+      
+      expect(order).not.toBeNull();
+      expect(events).toHaveLength(1);
+      expect(events[0].type).toBe('ORDER_CREATED');
     });
-
-    it('should not mark already completed orders as failed', () => {
-        const orders: Order[] = [
-            createOrder('red', 0, 10, 'completed'), // already completed
-        ];
-
-        const result = updateOrderDeadlines(orders, 15);
-
-        expect(result.orders[0].status).toBe('completed');
-        expect(result.justFailed).toBe(0);
+    
+    it('should not spawn order when not enough time passed', () => {
+      const context = createTestContext({ lastOrderTime: 0, realTime: 2 });
+      const events: SimulationEvent[] = [];
+      
+      const order = trySpawnOrder(context, events);
+      
+      expect(order).toBeNull();
     });
-
-    it('should not mark already failed orders again', () => {
-        const orders: Order[] = [
-            createOrder('red', 0, 10, 'failed'), // already failed
-        ];
-
-        const result = updateOrderDeadlines(orders, 15);
-
-        expect(result.orders[0].status).toBe('failed');
-        expect(result.justFailed).toBe(0); // Not "just" failed
+    
+    it('should not spawn order when max orders reached', () => {
+      const existingOrders = Array(10).fill(null).map((_, i) => ({
+        id: `order-${i}`,
+        type: 'store',
+        priority: 'normal',
+      })) as Order[];
+      
+      const context = createTestContext({ 
+        orders: existingOrders,
+        lastOrderTime: -10,
+        realTime: 0,
+      });
+      const events: SimulationEvent[] = [];
+      
+      const order = trySpawnOrder(context, events);
+      
+      expect(order).toBeNull();
     });
-
-    it('should count multiple newly failed orders', () => {
-        const orders: Order[] = [
-            createOrder('red', 0, 10, 'pending'),
-            createOrder('blue', 0, 10, 'pending'),
-            createOrder('green', 0, 20, 'pending'), // not expired
-        ];
-
-        const result = updateOrderDeadlines(orders, 15);
-
-        expect(result.justFailed).toBe(2);
+    
+    it('should spawn VIP orders when vipClients enabled', () => {
+      const rng = createRng(12345);
+      const grid = createGrid(gridParams, rng);
+      const context = createTestContext({ 
+        rng,
+        grid,
+        lastOrderTime: -10, 
+        realTime: 0,
+        flags: {
+          dualCommand: false,
+          afterburners: false,
+          overclocked: false,
+          conveyorBelt: false,
+          smartSorting: false,
+          zoneMastery: false,
+          vipClients: true,
+          timeWarp: false,
+          emergencyBrake: false,
+          predictivePathing: false,
+          blockedCells: 0,
+          multiCrane: 1,
+        },
+      });
+      const events: SimulationEvent[] = [];
+      
+      // Spawn many orders to get some VIP
+      let vipCount = 0;
+      for (let i = 0; i < 50; i++) {
+        context.lastOrderTime = -10;
+        const order = trySpawnOrder(context, events);
+        if (order?.priority === 'vip') vipCount++;
+        context.orders = []; // Clear for next iteration
+      }
+      
+      // Should have spawned some VIP orders
+      expect(vipCount).toBeGreaterThan(0);
     });
-});
+  });
 
-describe('generateOrders', () => {
-    const defaultWave: OrderWave = {
-        startTime: 0,
-        endTime: 100,
-        ordersPerMinute: 60, // 1 per second
-        itemDistribution: [
-            { type: 'red' as ItemType, weight: 1 },
-            { type: 'blue' as ItemType, weight: 1 },
-        ],
-        timerRange: { min: 30, max: 60 },
-    };
-
-    it('should not generate orders when shift is ending', () => {
-        const result = generateOrders([], {
-            realTime: 10,
-            lastOrderTime: 0,
-            shiftTime: 0, // Shift ended
-            orderSchedule: [defaultWave],
-            availableItemTypes: ['red', 'blue'],
-        });
-
-        expect(result.orders).toHaveLength(0);
-        expect(result.newLastOrderTime).toBe(0);
+  describe('updateOrders', () => {
+    it('should decrease order deadlines', () => {
+      const context = createTestContext({
+        orders: [
+          { id: '1', type: 'store', priority: 'normal', itemType: 'red', deadline: 10, maxDeadline: 10, createdAt: 0, vipMultiplier: 1, sourceSlotKey: null },
+        ] as Order[],
+        realTime: 1,
+      });
+      const events: SimulationEvent[] = [];
+      
+      updateOrders(context, events, 2);
+      
+      expect(context.orders[0].deadline).toBe(8);
     });
-
-    it('should not generate orders before interval', () => {
-        const result = generateOrders([], {
-            realTime: 0.5, // Only 0.5s passed
-            lastOrderTime: 0,
-            shiftTime: 100,
-            orderSchedule: [defaultWave], // 1 per second
-            availableItemTypes: ['red', 'blue'],
-        });
-
-        expect(result.orders).toHaveLength(0);
+    
+    it('should detect expired orders', () => {
+      const context = createTestContext({
+        orders: [
+          { id: '1', type: 'store', priority: 'normal', itemType: 'red', deadline: 1, maxDeadline: 10, createdAt: 0, vipMultiplier: 1, sourceSlotKey: null },
+        ] as Order[],
+        realTime: 2,
+      });
+      const events: SimulationEvent[] = [];
+      
+      const { expiredOrders } = updateOrders(context, events, 2);
+      
+      expect(expiredOrders).toHaveLength(1);
+      expect(events[0].type).toBe('ORDER_FAILED');
     });
+  });
 
-    it('should generate order when interval passed', () => {
-        const result = generateOrders([], {
-            realTime: 1.1, // 1.1s passed, interval is 1s
-            lastOrderTime: 0,
-            shiftTime: 100,
-            orderSchedule: [defaultWave],
-            availableItemTypes: ['red', 'blue'],
-        });
-
-        expect(result.orders).toHaveLength(1);
-        expect(result.newLastOrderTime).toBe(1.1);
-        expect(result.orders[0].status).toBe('pending');
+  describe('completeOrder', () => {
+    it('should emit ORDER_COMPLETED event', () => {
+      const context = createTestContext({ realTime: 10 });
+      const events: SimulationEvent[] = [];
+      const order: Order = {
+        id: '1',
+        type: 'store',
+        priority: 'normal',
+        itemType: 'red',
+        deadline: 5,
+        maxDeadline: 10,
+        createdAt: 0,
+        vipMultiplier: 1,
+        sourceSlotKey: null,
+      };
+      
+      completeOrder(order, context, events);
+      
+      expect(events).toHaveLength(1);
+      expect(events[0].type).toBe('ORDER_COMPLETED');
+      expect(events[0].data.orderId).toBe('1');
     });
-
-    it('should use item from distribution', () => {
-        const wave: OrderWave = {
-            startTime: 0,
-            endTime: 100,
-            ordersPerMinute: 60,
-            itemDistribution: [{ type: 'red' as ItemType, weight: 1 }], // Only red
-            timerRange: { min: 30, max: 30 },
-        };
-
-        const result = generateOrders([], {
-            realTime: 1,
-            lastOrderTime: 0,
-            shiftTime: 100,
-            orderSchedule: [wave],
-            availableItemTypes: ['red', 'blue'],
-        });
-
-        expect(result.orders[0].itemType).toBe('red');
+    
+    it('should track VIP orders', () => {
+      const context = createTestContext({ realTime: 10 });
+      const events: SimulationEvent[] = [];
+      const order: Order = {
+        id: '1',
+        type: 'store',
+        priority: 'vip',
+        itemType: 'red',
+        deadline: 5,
+        maxDeadline: 10,
+        createdAt: 0,
+        vipMultiplier: 1.5,
+        sourceSlotKey: null,
+      };
+      
+      completeOrder(order, context, events);
+      
+      expect(context.stats.vipOrdersCompleted).toBe(1);
     });
+  });
 
-    it('should set deadline based on timer range', () => {
-        const wave: OrderWave = {
-            startTime: 0,
-            endTime: 100,
-            ordersPerMinute: 60,
-            itemDistribution: [{ type: 'red' as ItemType, weight: 1 }],
-            timerRange: { min: 30, max: 30 }, // Fixed 30s
-        };
-
-        const result = generateOrders([], {
-            realTime: 10,
-            lastOrderTime: 0,
-            shiftTime: 100,
-            orderSchedule: [wave],
-            availableItemTypes: ['red', 'blue'],
-        });
-
-        expect(result.orders[0].createdAt).toBe(10);
-        expect(result.orders[0].deadline).toBe(40); // 10 + 30
+  describe('removeOrders', () => {
+    it('should remove specified orders', () => {
+      const orders = [
+        { id: '1', type: 'store' },
+        { id: '2', type: 'retrieve' },
+        { id: '3', type: 'store' },
+      ] as Order[];
+      
+      const context = createTestContext({ orders });
+      
+      removeOrders(context, [orders[1]]);
+      
+      expect(context.orders).toHaveLength(2);
+      expect(context.orders.map(o => o.id)).toEqual(['1', '3']);
     });
+  });
 
-    it('should append to existing orders', () => {
-        const existingOrders: Order[] = [
-            createOrder('red', 0, 100, 'pending'),
-        ];
-
-        const result = generateOrders(existingOrders, {
-            realTime: 1,
-            lastOrderTime: 0,
-            shiftTime: 100,
-            orderSchedule: [defaultWave],
-            availableItemTypes: ['red', 'blue'],
-        });
-
-        expect(result.orders).toHaveLength(2);
+  describe('getOrderPriorityScore', () => {
+    it('should score urgent orders higher', () => {
+      const urgentOrder: Order = {
+        id: '1',
+        type: 'store',
+        priority: 'normal',
+        itemType: 'red',
+        deadline: 2,
+        maxDeadline: 10,
+        createdAt: 0,
+        vipMultiplier: 1,
+        sourceSlotKey: null,
+      };
+      
+      const relaxedOrder: Order = {
+        id: '2',
+        type: 'store',
+        priority: 'normal',
+        itemType: 'blue',
+        deadline: 8,
+        maxDeadline: 10,
+        createdAt: 0,
+        vipMultiplier: 1,
+        sourceSlotKey: null,
+      };
+      
+      expect(getOrderPriorityScore(urgentOrder)).toBeGreaterThan(getOrderPriorityScore(relaxedOrder));
     });
-
-    it('should not generate when no active wave', () => {
-        const wave: OrderWave = {
-            startTime: 10,
-            endTime: 100,
-            ordersPerMinute: 60,
-            itemDistribution: [{ type: 'red' as ItemType, weight: 1 }],
-            timerRange: { min: 30, max: 30 },
-        };
-
-        const result = generateOrders([], {
-            realTime: 5, // Before wave starts
-            lastOrderTime: 0,
-            shiftTime: 100,
-            orderSchedule: [wave],
-            availableItemTypes: ['red', 'blue'],
-        });
-
-        expect(result.orders).toHaveLength(0);
+    
+    it('should score VIP orders higher', () => {
+      const normalOrder: Order = {
+        id: '1',
+        type: 'store',
+        priority: 'normal',
+        itemType: 'red',
+        deadline: 5,
+        maxDeadline: 10,
+        createdAt: 0,
+        vipMultiplier: 1,
+        sourceSlotKey: null,
+      };
+      
+      const vipOrder: Order = {
+        id: '2',
+        type: 'store',
+        priority: 'vip',
+        itemType: 'blue',
+        deadline: 5,
+        maxDeadline: 10,
+        createdAt: 0,
+        vipMultiplier: 1.5,
+        sourceSlotKey: null,
+      };
+      
+      expect(getOrderPriorityScore(vipOrder)).toBeGreaterThan(getOrderPriorityScore(normalOrder));
     });
+  });
 
-    it('should use fallback types when distribution is empty', () => {
-        const wave: OrderWave = {
-            startTime: 0,
-            endTime: 100,
-            ordersPerMinute: 60,
-            itemDistribution: [], // Empty
-            timerRange: { min: 30, max: 30 },
-        };
-
-        const result = generateOrders([], {
-            realTime: 1,
-            lastOrderTime: 0,
-            shiftTime: 100,
-            orderSchedule: [wave],
-            availableItemTypes: ['green', 'yellow'],
-        });
-
-        expect(result.orders).toHaveLength(1);
-        // Should use one of the fallback types
-        expect(['green', 'yellow']).toContain(result.orders[0].itemType);
+  describe('sortOrdersByPriority', () => {
+    it('should sort by priority descending', () => {
+      const orders: Order[] = [
+        { id: '1', deadline: 8, maxDeadline: 10, priority: 'normal' } as Order,
+        { id: '2', deadline: 2, maxDeadline: 10, priority: 'normal' } as Order,
+        { id: '3', deadline: 5, maxDeadline: 10, priority: 'vip' } as Order,
+      ];
+      
+      const sorted = sortOrdersByPriority(orders);
+      
+      // VIP should be first, then most urgent
+      expect(sorted[0].id).toBe('3');  // VIP
+      expect(sorted[1].id).toBe('2');  // Most urgent
+      expect(sorted[2].id).toBe('1');  // Least urgent
     });
+  });
+
+  describe('getUrgentOrders', () => {
+    it('should return orders below threshold', () => {
+      const orders: Order[] = [
+        { id: '1', deadline: 10 } as Order,
+        { id: '2', deadline: 3 } as Order,
+        { id: '3', deadline: 1 } as Order,
+      ];
+      
+      const urgent = getUrgentOrders(orders, 5);
+      
+      expect(urgent).toHaveLength(2);
+      expect(urgent.map(o => o.id)).toContain('2');
+      expect(urgent.map(o => o.id)).toContain('3');
+    });
+  });
+
+  describe('canFulfillOrder', () => {
+    it('should return true for store when space available', () => {
+      const rng = createRng(12345);
+      const grid = createGrid(gridParams, rng);
+      const order: Order = { id: '1', type: 'store', itemType: 'red' } as Order;
+      
+      expect(canFulfillOrder(order, grid)).toBe(true);
+    });
+    
+    it('should return true for retrieve when item available', () => {
+      const rng = createRng(12345);
+      const grid = createGrid({ ...gridParams, initialInventory: 10 }, rng);
+      
+      // Find a type that exists
+      const retrievable = grid.storageSlots
+        .map(key => grid.slots.get(key)!.item)
+        .filter(Boolean);
+      
+      if (retrievable.length > 0) {
+        const order: Order = { id: '1', type: 'retrieve', itemType: retrievable[0]!.type } as Order;
+        expect(canFulfillOrder(order, grid)).toBe(true);
+      }
+    });
+  });
+
+  describe('getOrderStats', () => {
+    it('should calculate order statistics', () => {
+      const orders: Order[] = [
+        { id: '1', type: 'store', priority: 'normal', deadline: 10 },
+        { id: '2', type: 'retrieve', priority: 'vip', deadline: 2 },
+        { id: '3', type: 'store', priority: 'normal', deadline: 5 },
+      ] as Order[];
+      
+      const stats = getOrderStats(orders);
+      
+      expect(stats.total).toBe(3);
+      expect(stats.store).toBe(2);
+      expect(stats.retrieve).toBe(1);
+      expect(stats.vip).toBe(1);
+      expect(stats.urgent).toBe(2);  // deadline <= 5 (orders 2 and 3)
+    });
+  });
 });

@@ -1,60 +1,106 @@
 @import "tailwindcss";
 
-/* === THROUGHPUT DESIGN SYSTEM === */
-
-/* Custom CSS variables matching plan.md Section 7.4 */
 :root {
-  /* Background colors */
-  --color-bg-primary: #0f172a;
-  --color-bg-slot: #1e293b;
-  --color-grid-lines: #334155;
-
-  /* Entity colors */
-  --color-crane: #22d3ee;
-  --color-io-port: #facc15;
-
-  /* Item colors */
-  --color-item-red: #ef4444;
-  --color-item-blue: #3b82f6;
-  --color-item-green: #22c55e;
-  --color-item-yellow: #facc15;
-  --color-item-purple: #a855f7;
-
-  /* Zone overlays (40% opacity) */
-  --color-zone-red: #ef444466;
-  --color-zone-blue: #3b82f666;
-  --color-zone-green: #22c55e66;
-
-  /* Semantic colors */
-  --color-success: #22c55e;
-  --color-warning: #f59e0b;
-  --color-danger: #ef4444;
-
-  /* Typography */
-  --font-sans: 'Inter', system-ui, -apple-system, sans-serif;
-  --font-mono: 'JetBrains Mono', ui-monospace, monospace;
-}
-
-/* Base styles - dark mode only per AGENTS.md */
-html {
+  font-family: 'JetBrains Mono', 'Fira Code', ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+  line-height: 1.5;
+  font-weight: 400;
   color-scheme: dark;
+  font-synthesis: none;
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+
+  /* Theme Colors */
+  --bg-main: #0a0c10;
+  --bg-card: #12161d;
+  --accent-primary: #3b82f6;
+  --accent-secondary: #6366f1;
+  --text-primary: #f8fafc;
+  --text-secondary: #94a3b8;
+  --border-dim: #1e293b;
+  --border-bright: #334155;
 }
 
 body {
   margin: 0;
-  font-family: var(--font-sans);
-  background-color: var(--color-bg-primary);
-  color: white;
+  display: flex;
+  place-items: center;
+  min-width: 320px;
   min-height: 100vh;
-  -webkit-font-smoothing: antialiased;
-  -moz-osx-font-smoothing: grayscale;
+  background-color: var(--bg-main);
+  color: var(--text-primary);
+  overflow: hidden;
 }
 
 #root {
-  min-height: 100vh;
+  width: 100%;
+  height: 100vh;
+  position: relative;
 }
 
-/* Monospace for stats/metrics */
-.font-mono {
-  font-family: var(--font-mono);
+/* CRT Scanline Overlay */
+#root::after {
+  content: " ";
+  display: block;
+  position: absolute;
+  top: 0;
+  left: 0;
+  bottom: 0;
+  right: 0;
+  background: linear-gradient(rgba(18, 16, 16, 0) 50%, rgba(0, 0, 0, 0.25) 50%), linear-gradient(90deg, rgba(255, 0, 0, 0.06), rgba(0, 255, 0, 0.02), rgba(0, 0, 255, 0.06));
+  z-index: 1000;
+  background-size: 100% 2px, 3px 100%;
+  pointer-events: none;
+  opacity: 0.15;
+}
+
+/* Scrollbar styling */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: var(--bg-main);
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--border-bright);
+  border-radius: 3px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: var(--accent-primary);
+}
+
+/* Custom UI classes */
+.panel-industrial {
+  @apply bg-[#12161d] border border-[#1e293b] rounded relative overflow-hidden;
+  box-shadow: 0 4px 20px -5px rgba(0, 0, 0, 0.5);
+}
+
+.panel-industrial::before {
+  content: "";
+  @apply absolute top-0 left-0 w-full h-[1px] bg-gradient-to-r from-transparent via-slate-500/20 to-transparent;
+}
+
+.text-glow {
+  text-shadow: 0 0 10px currentColor;
+}
+
+.grid-bg {
+  background-image: 
+    linear-gradient(to right, #1e293b 1px, transparent 1px),
+    linear-gradient(to bottom, #1e293b 1px, transparent 1px);
+  background-size: 50px 50px;
+}
+
+.clip-path-industrial {
+  clip-path: polygon(
+    0% 0%, 
+    100% 0%, 
+    100% calc(100% - 10px), 
+    calc(100% - 10px) 100%, 
+    0% 100%
+  );
 }

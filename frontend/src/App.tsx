@@ -1,109 +1,82 @@
-import { useUIStore } from './store/uiStore';
-import { useGameStore } from './store/gameStore';
+import React from 'react';
+import { AnimatePresence, motion } from 'framer-motion';
+import { useUiStore } from './store';
+import { MainMenuScreen } from './components/screens/MainMenuScreen';
 import { GameScreen } from './components/screens/GameScreen';
-import { LevelSelectScreen } from './components/screens/LevelSelectScreen';
-import { ShiftSummaryScreen } from './components/screens/ShiftSummaryScreen';
-import { COLORS } from './constants/colors';
-import { getLevelById } from './data/levels';
+import { PreShiftScreen } from './components/screens/PreShiftScreen';
+import { UpgradePickScreen } from './components/screens/UpgradePickScreen';
+import { VictoryScreen } from './components/screens/VictoryScreen';
+import { RunOverScreen } from './components/screens/RunOverScreen';
 
-function MainMenu() {
-  const setScreen = useUIStore((state) => state.setScreen);
-  const loadLevel = useGameStore((state) => state.loadLevel);
-
-  const handleStartGame = () => {
-    // Go to level select for progression
-    setScreen('level_select');
-  };
-
-  const handleSandbox = () => {
-    // Load a sandbox-like config (16x16, all features)
-    const sandboxLevel = getLevelById('1'); // Use level 1 as base for sandbox
-    if (sandboxLevel) {
-      loadLevel({
-        ...sandboxLevel,
-        id: 'sandbox',
-        name: 'Sandbox',
-        gridWidth: 16,
-        gridHeight: 16,
-        shiftDuration: 600, // 10 minutes
-        unlockedFeatures: ['zones', 'dual_command', 'retrieval_modes'],
-      });
-    }
-    setScreen('sandbox');
-  };
-
+// Placeholder screen for Shop
+function UnlockShopScreen() {
+  const { navigateTo } = useUiStore();
+  
   return (
-    <div
-      className="min-h-screen flex flex-col items-center justify-center p-8"
-      style={{ backgroundColor: COLORS.bgPrimary }}
-    >
-      {/* Header */}
-      <h1
-        className="text-5xl font-bold mb-2 tracking-tight"
-        style={{ color: COLORS.crane }}
-      >
-        THROUGHPUT
-      </h1>
-      <p className="text-slate-400 mb-12 text-lg">
-        The Warehouse Optimization Game
-      </p>
-
-      {/* Main Menu Buttons */}
-      <div className="flex flex-col gap-4 w-64">
+    <div className="relative flex flex-col items-center justify-center min-h-screen p-8 bg-slate-950 overflow-hidden">
+      <div className="absolute inset-0 grid-bg opacity-20 pointer-events-none" />
+      <div className="panel-industrial p-12 bg-slate-900/80 backdrop-blur-sm flex flex-col items-center gap-6 text-center">
+        <h1 className="text-4xl font-black text-white italic">UNLOCK SHOP</h1>
+        <p className="text-slate-400 font-mono">ENCRYPTED_DATABASE_ACCESS_REQUIRED</p>
+        <div className="w-64 h-1 bg-slate-800 relative overflow-hidden">
+          <motion.div 
+            className="absolute inset-0 bg-blue-500"
+            initial={{ left: '-100%' }}
+            animate={{ left: '100%' }}
+            transition={{ duration: 2, repeat: Infinity, ease: "linear" }}
+          />
+        </div>
+        <p className="text-slate-500 text-sm">Feature coming in next security patch...</p>
         <button
-          className="px-6 py-3 rounded-lg font-semibold text-lg transition-all duration-200 hover:scale-105"
-          style={{
-            backgroundColor: COLORS.crane,
-            color: COLORS.bgPrimary,
-          }}
-          onClick={handleStartGame}
+          onClick={() => navigateTo('main_menu')}
+          className="mt-4 px-8 py-2 border border-slate-700 text-slate-400 hover:text-white hover:border-white transition-all uppercase text-xs font-bold tracking-widest"
         >
-          Start Game
-        </button>
-
-        <button
-          className="px-6 py-3 rounded-lg font-semibold text-lg border-2 transition-all duration-200 hover:bg-slate-800"
-          style={{
-            borderColor: COLORS.crane,
-            color: COLORS.crane,
-          }}
-          onClick={handleSandbox}
-        >
-          Sandbox Mode
-        </button>
-
-        <button className="px-6 py-3 rounded-lg font-semibold text-lg text-slate-400 border border-slate-600 transition-all duration-200 hover:border-slate-400 hover:text-slate-200">
-          Settings
+          Back to Terminal
         </button>
       </div>
-
-      {/* Version */}
-      <p className="absolute bottom-4 text-slate-600 text-sm font-mono">
-        v1.0 — Phase 3
-      </p>
     </div>
   );
 }
 
-function App() {
-  const currentScreen = useUIStore((state) => state.currentScreen);
-  const shiftResult = useGameStore((state) => state.getShiftResult?.());
+const screenComponents: Record<string, React.FC> = {
+  main_menu: MainMenuScreen,
+  pre_shift: PreShiftScreen,
+  game: GameScreen,
+  upgrade_pick: UpgradePickScreen,
+  victory: VictoryScreen,
+  run_over: RunOverScreen,
+  unlock_shop: UnlockShopScreen,
+};
 
-  switch (currentScreen) {
-    case 'level_select':
-      return <LevelSelectScreen />;
-    case 'shift_summary':
-      if (shiftResult) {
-        return <ShiftSummaryScreen result={shiftResult} />;
-      }
-      return <LevelSelectScreen />;
-    case 'game':
-    case 'sandbox':
-      return <GameScreen />;
-    default:
-      return <MainMenu />;
-  }
+function ScreenTransition({ children }: { children: React.ReactNode }) {
+  return (
+    <motion.div
+      initial={{ opacity: 0 }}
+      animate={{ opacity: 1 }}
+      exit={{ opacity: 0 }}
+      transition={{ duration: 0.3 }}
+      className="w-full h-full"
+    >
+      {children}
+    </motion.div>
+  );
 }
 
-export default App;
-
+export default function App() {
+  const { currentScreen } = useUiStore();
+  
+  const ScreenComponent = screenComponents[currentScreen] || MainMenuScreen;
+  
+  return (
+    <div className="w-full h-screen bg-black overflow-hidden selection:bg-blue-500/30">
+      {/* Global CRT Flicker Effect */}
+      <div className="fixed inset-0 pointer-events-none z-[100] animate-pulse opacity-[0.03] bg-white mix-blend-overlay" />
+      
+      <AnimatePresence mode="wait">
+        <ScreenTransition key={currentScreen}>
+          <ScreenComponent />
+        </ScreenTransition>
+      </AnimatePresence>
+    </div>
+  );
+}

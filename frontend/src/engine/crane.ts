@@ -1,370 +1,354 @@
+import type { Crane, TransferJob, CellKey, Item, SimulationFlags } from './types';
+import { fromKey, toKey } from './types';
+import type { Grid } from './grid';
+
+export interface CraneParams {
+  id: string;
+  startX: number;
+  startY: number;
+  speed: number;        // Cells per second
+  transferTime: number; // Seconds to pick up or drop off
+}
+
 /**
- * Crane Engine
- * 
- * Pure functions for crane movement, actions, and state transitions.
- * No React/Zustand dependencies.
+ * Create a new crane
  */
-
-import type { Crane, Grid, Item, Slot, MissionType } from './types';
-
-// Constants
-const DEFAULT_CRANE_SPEED = 3; // Cells per second
-const ACTION_DELAY = 0.5; // Seconds for pickup/drop
-
-export interface CraneTickResult {
-    crane: Crane;
-    action?: CraneAction;
-}
-
-export type CraneAction =
-    | { type: 'PICKUP_FROM_IO'; item: Item }
-    | { type: 'DROP_AT_SLOT'; slot: Slot }
-    | { type: 'PICKUP_FROM_SLOT'; slot: Slot; item: Item }
-    | { type: 'DELIVER_AT_IO'; orderId: string }
-    | { type: 'ARRIVED'; x: number; y: number };
-
-export interface MoveOptions {
-    targetX: number;
-    targetY: number;
-    missionType?: MissionType;
+export function createCrane(params: CraneParams): Crane {
+  return {
+    id: params.id,
+    x: params.startX,
+    y: params.startY,
+    targetX: params.startX,
+    targetY: params.startY,
+    state: 'IDLE',
+    movingAxis: null,
+    heldItem: null,
+    transferProgress: 0,
+    transferTime: params.transferTime,
+    currentJob: null,
+  };
 }
 
 /**
- * Calculate travel time between two points.
+ * Get crane speed (cells per second)
  */
-export function calculateTravelTime(
-    fromX: number,
-    fromY: number,
-    toX: number,
-    toY: number,
-    speed: number = DEFAULT_CRANE_SPEED
-): number {
-    const dist = Math.max(Math.abs(toX - fromX), Math.abs(toY - fromY));
-    return dist / speed;
+function getCraneSpeed(_crane: Crane, hasAfterburners: boolean): number {
+  const baseSpeed = 2;  // Base: 2 cells/sec
+  const speedMultiplier = hasAfterburners ? 1.3 : 1.0;
+  return baseSpeed * speedMultiplier;
 }
 
 /**
- * Create a crane in IDLE state at a position.
+ * Create a new transfer job
  */
-export function createCrane(x: number, y: number): Crane {
-    return {
-        x,
-        y,
-        state: 'IDLE',
-        mission: null,
-        carrying: null,
-        speed: DEFAULT_CRANE_SPEED,
-        busyTimeRemaining: 0,
-        targetX: undefined,
-        targetY: undefined,
-    };
+export function createTransferJob(
+  orderId: string,
+  jobType: 'store' | 'retrieve',
+  sourceKey: CellKey,
+  destKey: CellKey,
+  expectedItemType: string
+): TransferJob {
+  return {
+    id: `job-${Date.now()}-${Math.floor(Math.random() * 10000)}`,
+    orderId,
+    jobType,
+    sourceKey,
+    destKey,
+    phase: 'MOVING_TO_SOURCE',
+    expectedItemType,
+  };
 }
 
 /**
- * Start moving the crane to a target position.
+ * Assign a transfer job to a crane
+ * Crane must be IDLE to receive a job
  */
-export function moveCrane(
-    crane: Crane,
-    options: MoveOptions
-): Crane {
-    const { targetX, targetY } = options;
-    const duration = calculateTravelTime(crane.x, crane.y, targetX, targetY, crane.speed);
-
-    return {
-        ...crane,
-        x: crane.x, // Keep current position until arrival
-        y: crane.y,
-        state: 'MOVING',
-        busyTimeRemaining: duration,
-        targetX,
-        targetY,
-        mission: options.missionType ? {
-            type: options.missionType,
-            targetX,
-            targetY,
-            item: crane.carrying ?? { id: 'pending', type: 'red', storedAt: 0 },
-        } : null,
-    };
+export function assignJob(crane: Crane, job: TransferJob): boolean {
+  if (crane.state !== 'IDLE' || crane.heldItem !== null) {
+    return false; // Can't assign job if busy
+  }
+  
+  crane.currentJob = job;
+  crane.state = 'MOVING_TO_SOURCE';
+  crane.movingAxis = null;  // Reset movement axis for new target
+  
+  // Set target to source
+  const sourcePos = fromKey(job.sourceKey);
+  crane.targetX = sourcePos.x;
+  crane.targetY = sourcePos.y;
+  
+  return true;
 }
 
 /**
- * Process one tick of crane state machine.
- * Returns the new crane state and any action that occurred.
+ * Check if crane is available for a new job
+ */
+export function isAvailable(crane: Crane): boolean {
+  return crane.state === 'IDLE' && crane.heldItem === null && crane.currentJob === null;
+}
+
+/**
+ * Check if crane is holding an item
+ */
+export function isHolding(crane: Crane): boolean {
+  return crane.heldItem !== null;
+}
+
+/**
+ * Get crane's current cell key
+ */
+export function getCurrentKey(crane: Crane): CellKey {
+  return toKey(Math.round(crane.x), Math.round(crane.y));
+}
+
+/**
+ * Move crane towards target using Manhattan/grid-based movement (no diagonals)
+ * Cranes move horizontally first, then vertically
+ * Returns true if arrived
+ */
+function moveTowards(crane: Crane, dt: number, speed: number): boolean {
+  // Check if already at target
+  const dx = crane.targetX - crane.x;
+  const dy = crane.targetY - crane.y;
+  
+  if (Math.abs(dx) < 0.001 && Math.abs(dy) < 0.001) {
+    crane.x = crane.targetX;
+    crane.y = crane.targetY;
+    crane.movingAxis = null;
+    return true; // Arrived
+  }
+  
+  // Determine which axis to move on
+  // Priority: X first, then Y (could be made configurable)
+  if (crane.movingAxis === null) {
+    crane.movingAxis = Math.abs(dx) > 0.001 ? 'x' : 'y';
+  }
+  
+  const moveDistance = speed * dt;
+  
+  if (crane.movingAxis === 'x') {
+    if (Math.abs(dx) > 0.001) {
+      // Move horizontally
+      const direction = dx > 0 ? 1 : -1;
+      const distanceToTarget = Math.abs(dx);
+      
+      if (moveDistance >= distanceToTarget) {
+        // Reached target X, snap to it and switch to Y axis
+        crane.x = crane.targetX;
+        crane.movingAxis = Math.abs(dy) > 0.001 ? 'y' : null;
+      } else {
+        crane.x += direction * moveDistance;
+      }
+    } else {
+      // Already aligned on X, switch to Y
+      crane.movingAxis = Math.abs(dy) > 0.001 ? 'y' : null;
+    }
+  } else if (crane.movingAxis === 'y') {
+    if (Math.abs(dy) > 0.001) {
+      // Move vertically
+      const direction = dy > 0 ? 1 : -1;
+      const distanceToTarget = Math.abs(dy);
+      
+      if (moveDistance >= distanceToTarget) {
+        // Reached target Y, snap to it
+        crane.y = crane.targetY;
+        crane.movingAxis = null;
+      } else {
+        crane.y += direction * moveDistance;
+      }
+    } else {
+      // Already aligned on Y, we're done
+      crane.movingAxis = null;
+    }
+  }
+  
+  // Check if arrived after this move
+  if (Math.abs(crane.targetX - crane.x) < 0.001 && Math.abs(crane.targetY - crane.y) < 0.001) {
+    crane.x = crane.targetX;
+    crane.y = crane.targetY;
+    crane.movingAxis = null;
+    return true;
+  }
+  
+  return false; // Still moving
+}
+
+/**
+ * Result of ticking a crane
+ */
+export interface TickCraneResult {
+  event?: 'pickup_complete' | 'dropoff_complete' | 'job_complete';
+  item?: Item;
+  cellKey?: CellKey;
+  orderId?: string;
+}
+
+/**
+ * Tick a crane for one simulation step
+ * Implements the FSM:
+ *   IDLE -> (wait for job)
+ *   MOVING_TO_SOURCE -> ACQUIRING (on arrival)
+ *   ACQUIRING -> MOVING_TO_DEST (on transfer complete)
+ *   MOVING_TO_DEST -> DEPOSITING (on arrival)
+ *   DEPOSITING -> IDLE (on transfer complete, job done)
  */
 export function tickCrane(
-    crane: Crane,
-    dt: number,
-    context: {
-        grid: Grid;
-        onNeedStoreTarget: (item: Item) => Slot | null;
+  crane: Crane,
+  dt: number,
+  grid: Grid,
+  flags: SimulationFlags
+): TickCraneResult | null {
+  const speed = getCraneSpeed(crane, flags.afterburners);
+  
+  switch (crane.state) {
+    case 'IDLE': {
+      // Nothing to do - wait for job assignment
+      return null;
     }
-): CraneTickResult {
-    // Process busy time (MOVING or TRANSFERRING)
-    if (crane.busyTimeRemaining > 0) {
-        const newBusyTime = Math.max(0, crane.busyTimeRemaining - dt);
+    
+    case 'MOVING_TO_SOURCE': {
+      const arrived = moveTowards(crane, dt, speed);
+      
+      if (arrived) {
+        // Start acquiring
+        crane.state = 'ACQUIRING';
+        crane.transferProgress = 0;
+      }
+      return null;
+    }
+    
+    case 'ACQUIRING': {
+      crane.transferProgress += dt / crane.transferTime;
+      
+      if (crane.transferProgress >= 1) {
+        // Pickup complete - grab the item
+        const job = crane.currentJob!;
+        const slot = grid.slots.get(job.sourceKey);
         
-        if (newBusyTime > 0) {
-            // Still busy
-            return {
-                crane: { ...crane, busyTimeRemaining: newBusyTime },
-            };
+        if (slot && slot.item) {
+          crane.heldItem = slot.item;
+          slot.item = null;
+          
+          // IMMEDIATELY transition to moving to destination
+          // Never go IDLE while holding an item with a job
+          crane.state = 'MOVING_TO_DEST';
+          crane.transferProgress = 0;
+          crane.movingAxis = null;  // Reset movement axis for new target
+          
+          const destPos = fromKey(job.destKey);
+          crane.targetX = destPos.x;
+          crane.targetY = destPos.y;
+          
+          return {
+            event: 'pickup_complete',
+            item: crane.heldItem,
+            cellKey: job.sourceKey,
+            orderId: job.orderId,
+          };
+        } else {
+          // Item not found - cancel job
+          crane.state = 'IDLE';
+          crane.currentJob = null;
+          crane.transferProgress = 0;
+          return null;
         }
-
-        // Action just completed
-        return completeCurrentAction(crane, context);
+      }
+      return null;
     }
-
-    // IDLE - no action needed
-    return { crane };
-}
-
-function completeCurrentAction(
-    crane: Crane,
-    context: { grid: Grid; onNeedStoreTarget: (item: Item) => Slot | null }
-): CraneTickResult {
-    if (crane.state === 'MOVING') {
-        // Arrived at destination - use target from mission or stored targetX/Y
-        const targetX = crane.mission?.targetX ?? crane.targetX ?? crane.x;
-        const targetY = crane.mission?.targetY ?? crane.targetY ?? crane.y;
-
-        return {
-            crane: {
-                ...crane,
-                x: targetX,
-                y: targetY,
-                targetX: undefined,
-                targetY: undefined,
-                state: 'TRANSFERRING',
-                busyTimeRemaining: ACTION_DELAY,
-            },
-            action: { type: 'ARRIVED', x: targetX, y: targetY },
-        };
+    
+    case 'MOVING_TO_DEST': {
+      const arrived = moveTowards(crane, dt, speed);
+      
+      if (arrived) {
+        // Start depositing
+        crane.state = 'DEPOSITING';
+        crane.transferProgress = 0;
+      }
+      return null;
     }
-
-    if (crane.state === 'TRANSFERRING') {
-        return completeTransfer(crane, context);
-    }
-
-    return { crane };
-}
-
-function completeTransfer(
-    crane: Crane,
-    context: { grid: Grid; onNeedStoreTarget: (item: Item) => Slot | null }
-): CraneTickResult {
-    const { grid, onNeedStoreTarget } = context;
-    const mission = crane.mission;
-    const atIO = crane.x === grid.ioPort.x && crane.y === grid.ioPort.y;
-
-    // STORE mission
-    if (mission?.type === 'STORE') {
-        return completeStoreMission(crane, grid, onNeedStoreTarget, atIO);
-    }
-
-    // RETRIEVE mission
-    if (mission?.type === 'RETRIEVE') {
-        return completeRetrieveMission(crane, grid, atIO);
-    }
-
-    // Unknown mission - go idle
-    return {
-        crane: {
-            ...crane,
-            state: 'IDLE',
-            busyTimeRemaining: 0,
-            mission: null,
-        },
-    };
-}
-
-function completeStoreMission(
-    crane: Crane,
-    grid: Grid,
-    onNeedStoreTarget: (item: Item) => Slot | null,
-    atIO: boolean
-): CraneTickResult {
-    // At IO without item -> Pickup from IO
-    if (atIO && !crane.carrying) {
-        // Item will be provided by simulation layer
-        return {
-            crane: {
-                ...crane,
-                state: 'TRANSFERRING', // Stay in transferring, waiting for item
-                busyTimeRemaining: 0, // Signal that we need item
-            },
-            action: { type: 'PICKUP_FROM_IO', item: null! }, // Item filled by simulation
-        };
-    }
-
-    // At target slot with item -> Drop
-    const targetX = crane.mission?.targetX ?? crane.x;
-    const targetY = crane.mission?.targetY ?? crane.y;
-    const atTarget = crane.x === targetX && crane.y === targetY;
-    const key = `${crane.x},${crane.y}`;
-    const slot = grid.slots.get(key);
-
-    if (atTarget && crane.carrying && slot?.state === 'empty') {
-        return {
-            crane: {
-                ...crane,
-                carrying: null,
-                state: 'IDLE',
-                mission: null,
-                busyTimeRemaining: 0,
-            },
-            action: {
-                type: 'DROP_AT_SLOT',
-                slot,
-            },
-        };
-    }
-
-    // At IO with item -> Need to find storage slot and move there
-    if (atIO && crane.carrying) {
-        const targetSlot = onNeedStoreTarget(crane.carrying);
+    
+    case 'DEPOSITING': {
+      crane.transferProgress += dt / crane.transferTime;
+      
+      if (crane.transferProgress >= 1) {
+        // Dropoff complete
+        const job = crane.currentJob!;
+        const slot = grid.slots.get(job.destKey);
+        const item = crane.heldItem;
         
-        if (targetSlot) {
-            const duration = calculateTravelTime(
-                crane.x, crane.y, targetSlot.x, targetSlot.y, crane.speed
-            );
-            
-            return {
-                crane: {
-                    ...crane,
-                    mission: {
-                        type: 'STORE',
-                        targetX: targetSlot.x,
-                        targetY: targetSlot.y,
-                        item: crane.carrying,
-                    },
-                    state: 'MOVING',
-                    busyTimeRemaining: duration,
-                },
-            };
+        if (slot && item) {
+          slot.item = item;
         }
-
-        // No slot found - stuck holding item, go idle
-        return {
-            crane: {
-                ...crane,
-                state: 'IDLE',
-                mission: null,
-            },
+        
+        crane.heldItem = null;
+        crane.transferProgress = 0;
+        
+        const result: TickCraneResult = {
+          event: 'dropoff_complete',
+          item: item || undefined,
+          cellKey: job.destKey,
+          orderId: job.orderId,
         };
+        
+        // Job is complete - go IDLE
+        crane.state = 'IDLE';
+        crane.currentJob = null;
+        
+        return result;
+      }
+      return null;
     }
-
-    // Unexpected state
-    return {
-        crane: {
-            ...crane,
-            state: 'IDLE',
-            mission: null,
-        },
-    };
-}
-
-function completeRetrieveMission(
-    crane: Crane,
-    grid: Grid,
-    atIO: boolean
-): CraneTickResult {
-    // At IO with item -> Deliver
-    if (atIO && crane.carrying) {
-        return {
-            crane: {
-                ...crane,
-                carrying: null,
-                state: 'IDLE',
-                mission: null,
-            },
-            action: {
-                type: 'DELIVER_AT_IO',
-                orderId: '', // Filled by simulation layer
-            },
-        };
-    }
-
-    // At slot without item -> Pickup
-    const key = `${crane.x},${crane.y}`;
-    const slot = grid.slots.get(key);
-
-    if (slot?.state === 'occupied' && slot.item && !crane.carrying) {
-        // Move to IO
-        const duration = calculateTravelTime(
-            crane.x, crane.y, grid.ioPort.x, grid.ioPort.y, crane.speed
-        );
-
-        return {
-            crane: {
-                ...crane,
-                carrying: slot.item,
-                mission: {
-                    type: 'RETRIEVE',
-                    targetX: grid.ioPort.x,
-                    targetY: grid.ioPort.y,
-                    item: slot.item,
-                },
-                state: 'MOVING',
-                busyTimeRemaining: duration,
-            },
-            action: {
-                type: 'PICKUP_FROM_SLOT',
-                slot,
-                item: slot.item,
-            },
-        };
-    }
-
-    // Unexpected state
-    return {
-        crane: {
-            ...crane,
-            state: 'IDLE',
-            mission: null,
-        },
-    };
+  }
 }
 
 /**
- * Start a STORE mission from the IO port.
+ * Cancel current job and return crane to IDLE
  */
-export function startStoreMission(crane: Crane, grid: Grid): Crane {
-    const duration = calculateTravelTime(
-        crane.x, crane.y, grid.ioPort.x, grid.ioPort.y, crane.speed
-    );
-
-    return {
-        ...crane,
-        mission: {
-            type: 'STORE',
-            targetX: grid.ioPort.x,
-            targetY: grid.ioPort.y,
-            item: { id: 'pending', type: 'red', storedAt: 0 },
-        },
-        state: duration === 0 ? 'TRANSFERRING' : 'MOVING',
-        busyTimeRemaining: duration === 0 ? ACTION_DELAY : duration,
-    };
+export function cancelJob(crane: Crane): void {
+  crane.state = 'IDLE';
+  crane.currentJob = null;
+  crane.transferProgress = 0;
+  crane.movingAxis = null;
+  // Note: we don't drop heldItem - that needs special handling
 }
 
 /**
- * Start a RETRIEVE mission to a specific slot.
+ * Get estimated time to complete current job
  */
-export function startRetrieveMission(
-    crane: Crane,
-    targetX: number,
-    targetY: number
-): Crane {
-    const duration = calculateTravelTime(crane.x, crane.y, targetX, targetY, crane.speed);
-
-    return {
-        ...crane,
-        mission: {
-            type: 'RETRIEVE',
-            targetX,
-            targetY,
-            item: { id: 'pending', type: 'red', storedAt: 0 },
-        },
-        state: duration === 0 ? 'TRANSFERRING' : 'MOVING',
-        busyTimeRemaining: duration === 0 ? ACTION_DELAY : duration,
-    };
+export function getEstimatedCompletionTime(
+  crane: Crane,
+  flags: { afterburners: boolean }
+): number {
+  if (crane.state === 'IDLE') return 0;
+  
+  const speed = getCraneSpeed(crane, flags.afterburners);
+  let time = 0;
+  
+  // Time to finish current transfer (if any)
+  if (crane.state === 'ACQUIRING' || crane.state === 'DEPOSITING') {
+    time += crane.transferTime * (1 - crane.transferProgress);
+  }
+  
+  // Time to move to current target
+  if (crane.state === 'MOVING_TO_SOURCE' || crane.state === 'MOVING_TO_DEST') {
+    const dx = crane.targetX - crane.x;
+    const dy = crane.targetY - crane.y;
+    const distance = Math.sqrt(dx * dx + dy * dy);
+    time += distance / speed;
+  }
+  
+  // If we're still going to do more phases, estimate those
+  if (crane.state === 'MOVING_TO_SOURCE' || crane.state === 'ACQUIRING') {
+    // Will need to move to dest after acquiring
+    const job = crane.currentJob;
+    if (job) {
+      const sourcePos = fromKey(job.sourceKey);
+      const destPos = fromKey(job.destKey);
+      const distToDest = Math.abs(destPos.x - sourcePos.x) + Math.abs(destPos.y - sourcePos.y);
+      time += distToDest / speed;
+      time += crane.transferTime; // Deposit time
+    }
+  }
+  
+  return time;
 }

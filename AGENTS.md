@@ -254,6 +254,29 @@ psql -h localhost -U throughput -d throughput
 
 ---
 
+## Deployment
+
+Throughput is deployed on this VPS (`srv1173528` / `72.61.213.90`) via Docker Compose.
+
+**Top-level compose file:** `/home/dev/hosted_projects/docker-compose.yml`
+- nginx reverse proxy routes `throughput.zahranm.cloud` to the `throughput` container
+- The `throughput` service builds from `./Throughput/Dockerfile`
+
+**After any code changes, you must rebuild and redeploy:**
+```bash
+cd /home/dev/hosted_projects
+docker compose up -d --build throughput
+```
+
+If you also changed the top-level `docker-compose.yml` (e.g. added a database service), run:
+```bash
+docker compose up -d --build
+```
+
+**Environment variables** are set in the top-level `docker-compose.yml` under the `throughput` service, not in the project's own `docker-compose.yml` (which is for local dev only).
+
+---
+
 ## When In Doubt
 
 1. Check `plan.md` for intended behavior

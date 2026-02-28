@@ -1,52 +1,74 @@
-// Coordinate utility functions for grid operations
+/**
+ * Coordinate utility functions
+ */
+
+export interface Vec2 {
+  x: number;
+  y: number;
+}
+
+export type CellKey = string;
 
 /**
- * Converts x,y coordinates to a string key for Map storage
+ * Convert x,y to cell key "x,y"
  */
-export function toKey(x: number, y: number): string {
-    return `${x},${y}`;
+export function toKey(x: number, y: number): CellKey {
+  return `${x},${y}`;
 }
 
 /**
- * Parses a coordinate key back to x,y values
+ * Parse cell key "x,y" to coordinates
  */
-export function fromKey(key: string): { x: number; y: number } {
-    const [x, y] = key.split(',').map(Number);
-    return { x, y };
+export function fromKey(key: CellKey): Vec2 {
+  const [x, y] = key.split(',').map(Number);
+  return { x, y };
 }
 
 /**
- * Calculates Manhattan distance between two points
+ * Manhattan distance between two points
  */
-export function manhattanDistance(
-    x1: number,
-    y1: number,
-    x2: number,
-    y2: number
-): number {
-    return Math.abs(x2 - x1) + Math.abs(y2 - y1);
+export function manhattanDistance(a: Vec2, b: Vec2): number {
+  return Math.abs(a.x - b.x) + Math.abs(a.y - b.y);
 }
 
 /**
- * Calculates Euclidean distance between two points
+ * Euclidean distance between two points
  */
-export function euclideanDistance(
-    x1: number,
-    y1: number,
-    x2: number,
-    y2: number
-): number {
-    return Math.sqrt(Math.pow(x2 - x1, 2) + Math.pow(y2 - y1, 2));
+export function euclideanDistance(a: Vec2, b: Vec2): number {
+  const dx = a.x - b.x;
+  const dy = a.y - b.y;
+  return Math.sqrt(dx * dx + dy * dy);
 }
 
 /**
- * Checks if coordinates are within grid bounds
+ * Check if two points are equal
  */
-export function isInBounds(
-    x: number,
-    y: number,
-    width: number,
-    height: number
-): boolean {
-    return x >= 0 && x < width && y >= 0 && y < height;
+export function isSamePosition(a: Vec2, b: Vec2): boolean {
+  return a.x === b.x && a.y === b.y;
+}
+
+/**
+ * Get adjacent coordinates (up, right, down, left)
+ */
+export function getAdjacent(pos: Vec2): Vec2[] {
+  return [
+    { x: pos.x, y: pos.y - 1 },
+    { x: pos.x + 1, y: pos.y },
+    { x: pos.x, y: pos.y + 1 },
+    { x: pos.x - 1, y: pos.y },
+  ];
+}
+
+/**
+ * Clamp a value between min and max
+ */
+export function clamp(value: number, min: number, max: number): number {
+  return Math.max(min, Math.min(max, value));
+}
+
+/**
+ * Linear interpolation between a and b
+ */
+export function lerp(a: number, b: number, t: number): number {
+  return a + (b - a) * clamp(t, 0, 1);
 }
