@@ -219,6 +219,7 @@ export function previewTurbo(context: SimulationContext): TurboPreview {
  * Each active order effectively gets a 4-second deadline extension.
  */
 export function previewFreeze(context: SimulationContext): FreezePreview {
+  void context;
   const duration = 4;
   const deadlineExtension = 4; // Each paused second = 1 extra second on deadlines
 
@@ -280,6 +281,7 @@ export function previewReject(
  * Duration: 6 seconds, multiplier: 2x, cost: 1 integrity.
  */
 export function previewCoreSurge(context: SimulationContext): CoreSurgePreview {
+  void context;
   const duration = 6;
   const speedMultiplier = 2.0;
   const cost = 1; // Integrity cost
