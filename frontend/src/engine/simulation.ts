@@ -19,6 +19,7 @@ import {
 } from './orders';
 import { switchPolicy, tickPolicyCooldown, findBestOrderForCraneByPolicy } from './policy';
 import { trackOrderComplete, trackBreach, spendEp, trackQueueClear } from './ep-system';
+import { computeExactEta } from './eta-service';
 
 // ============================================================================
 // Shift/Breach/EP constants
@@ -590,47 +591,198 @@ export function spendEmergencyPower(
 }
 
 // ============================================================================
-// Ability Activations (for Phase 2, stubs ready)
+// Ability Activations
 // ============================================================================
 
-export function activateTurbo(context: SimulationContext): { success: boolean; duration: number } {
+export interface AbilityActivationResult {
+  success: boolean;
+  abilityId: 'priority_override' | 'turbo_crane' | 'deadline_freeze' | 'reject_contract' | 'core_surge';
+  costPaid: number;
+  costType: 'ep' | 'integrity';
+  duration?: number;
+  targetOrderId?: string;
+  projectedEta?: number;
+  currentEta?: number;
+  cranesInterrupted?: number;
+  ordersRemoved?: number;
+  integrityRemaining?: number;
+  reason?: string;
+}
+
+function emitAbilityUsed(
+  context: SimulationContext,
+  result: AbilityActivationResult
+): SimulationEvent {
+  return {
+    type: 'ABILITY_USED',
+    timestamp: context.realTime,
+    data: { ...result },
+  };
+}
+
+function failAbility(
+  abilityId: AbilityActivationResult['abilityId'], reason: string): AbilityActivationResult {
+  return { success: false, abilityId, costPaid: 0, costType: abilityId === 'reject_contract' || abilityId === 'core_surge' ? 'integrity' : 'ep', reason };
+}
+
+export function activatePriorityOverride(
+  context: SimulationContext,
+  orderId: string
+): AbilityActivationResult {
+  const order = context.orders.find(o => o.id === orderId);
+  if (!order) return failAbility('priority_override', 'Order not found');
+
+  const result = spendEmergencyPower(context, 35);
+  if (!result.success) return failAbility('priority_override', 'Insufficient Emergency Power');
+
+  const currentEta = computeExactEta(order, context, context.currentPolicy).eta;
+  let projectedEta = currentEta;
+  let cranesInterrupted = 0;
+
+  const existingAssignedCrane = context.cranes.find(c => c.currentJob?.orderId === orderId);
+  if (!existingAssignedCrane) {
+    const interruptibleCranes = getInterruptibleCranes(context.cranes)
+      .filter(c => c.currentJob?.orderId !== orderId)
+      .sort((a, b) => {
+        const aBusy = a.state === 'IDLE' && a.currentJob === null ? 0 : 1;
+        const bBusy = b.state === 'IDLE' && b.currentJob === null ? 0 : 1;
+        return aBusy - bBusy;
+      });
+
+    for (const crane of interruptibleCranes) {
+      const wasBusy = crane.state !== 'IDLE' || crane.currentJob !== null;
+      const previousJob = crane.currentJob;
+      const previousState = crane.state;
+      const previousTargetX = crane.targetX;
+      const previousTargetY = crane.targetY;
+      const previousTransferProgress = crane.transferProgress;
+      const previousMovingAxis = crane.movingAxis;
+
+      const interrupted = interruptCrane(crane);
+      if (!interrupted) continue;
+
+      const job = createJobForOrder(order, context, crane);
+      if (job && assignJob(crane, job)) {
+        if (wasBusy) cranesInterrupted++;
+        projectedEta = computeExactEta(order, context, context.currentPolicy).eta;
+        break;
+      }
+
+      crane.currentJob = previousJob;
+      crane.state = previousState;
+      crane.targetX = previousTargetX;
+      crane.targetY = previousTargetY;
+      crane.transferProgress = previousTransferProgress;
+      crane.movingAxis = previousMovingAxis;
+    }
+  }
+
+  return {
+    success: true,
+    abilityId: 'priority_override',
+    costPaid: 35,
+    costType: 'ep',
+    targetOrderId: orderId,
+    currentEta: Number.isFinite(currentEta) ? currentEta : undefined,
+    projectedEta: Number.isFinite(projectedEta) ? projectedEta : undefined,
+    cranesInterrupted,
+    reason: existingAssignedCrane
+      ? 'Order already had an assigned crane; priority cost paid to lock intervention intent'
+      : 'Interrupted the minimum safe crane set and assigned the selected order immediately',
+  };
+}
+
+export function activateTurbo(context: SimulationContext): AbilityActivationResult {
   const cost = 35;
   const result = spendEmergencyPower(context, cost);
-  if (!result.success) return { success: false, duration: 0 };
+  if (!result.success) return failAbility('turbo_crane', 'Insufficient Emergency Power');
 
-  const duration = 7; // 6-8s, midpoint
+  const duration = 7;
   context.activeAbilities.turbo = true;
   context.activeAbilities.turboRemaining = duration;
 
-  return { success: true, duration };
+  return { success: true, abilityId: 'turbo_crane', costPaid: cost, costType: 'ep', duration };
 }
 
-export function activateFreeze(context: SimulationContext): { success: boolean; duration: number } {
+export function activateFreeze(context: SimulationContext): AbilityActivationResult {
   const cost = 60;
   const result = spendEmergencyPower(context, cost);
-  if (!result.success) return { success: false, duration: 0 };
+  if (!result.success) return failAbility('deadline_freeze', 'Insufficient Emergency Power');
 
-  const duration = 4; // 4 seconds
+  const duration = 4;
   context.activeAbilities.freeze = true;
   context.activeAbilities.freezeRemaining = duration;
 
-  return { success: true, duration };
+  return { success: true, abilityId: 'deadline_freeze', costPaid: cost, costType: 'ep', duration };
 }
 
-export function activateCoreSurge(context: SimulationContext): { success: boolean; duration: number } {
-  if (context.integrity < 1) return { success: false, duration: 0 };
+export function rejectContract(context: SimulationContext, orderId: string): AbilityActivationResult {
+  const order = context.orders.find(o => o.id === orderId);
+  if (!order) return failAbility('reject_contract', 'Order not found');
+  if (context.integrity < 1) return failAbility('reject_contract', 'Insufficient System Integrity');
+
+  context.integrity -= 1;
+  context.stats.integrityLost += 1;
+  removeOrders(context, [order]);
+
+  return {
+    success: true,
+    abilityId: 'reject_contract',
+    costPaid: 1,
+    costType: 'integrity',
+    targetOrderId: orderId,
+    ordersRemoved: 1,
+    integrityRemaining: context.integrity,
+    reason: `Rejected order and avoided ${getBreachDamage(order)} breach damage`,
+  };
+}
+
+export function activateCoreSurge(context: SimulationContext): AbilityActivationResult {
+  if (context.integrity < 1) return failAbility('core_surge', 'Insufficient System Integrity');
 
   context.integrity -= 1;
   context.stats.integrityLost += 1;
 
-  const duration = 6; // 6 seconds
+  const duration = 6;
   context.activeAbilities.coreSurge = true;
   context.activeAbilities.coreSurgeRemaining = duration;
 
-  // Emit INTEGRITY_LOST event
-  // (Events are emitted by caller — this is functional)
+  return {
+    success: true,
+    abilityId: 'core_surge',
+    costPaid: 1,
+    costType: 'integrity',
+    duration,
+    integrityRemaining: context.integrity,
+  };
+}
 
-  return { success: true, duration };
+export function activateAbility(
+  context: SimulationContext,
+  abilityId: AbilityActivationResult['abilityId'],
+  targetOrderId?: string
+): { result: AbilityActivationResult; events: SimulationEvent[] } {
+  let result: AbilityActivationResult;
+
+  switch (abilityId) {
+    case 'priority_override':
+      result = targetOrderId ? activatePriorityOverride(context, targetOrderId) : failAbility(abilityId, 'Target order required');
+      break;
+    case 'turbo_crane':
+      result = activateTurbo(context);
+      break;
+    case 'deadline_freeze':
+      result = activateFreeze(context);
+      break;
+    case 'reject_contract':
+      result = targetOrderId ? rejectContract(context, targetOrderId) : failAbility(abilityId, 'Target order required');
+      break;
+    case 'core_surge':
+      result = activateCoreSurge(context);
+      break;
+  }
+
+  return { result, events: result.success ? [emitAbilityUsed(context, result)] : [] };
 }
 
 // ============================================================================
