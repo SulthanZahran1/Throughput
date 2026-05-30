@@ -4,10 +4,8 @@ import type {
   OrderDiagnostics,
   BottleneckLabel,
   EtaDesignation,
-  CellKey,
-  Slot,
 } from './types';
-import { manhattanDistance, fromKey, getBreachDamage } from './types';
+import { manhattanDistance, fromKey } from './types';
 import { getEstimatedCompletionTime } from './crane';
 
 // ============================================================================

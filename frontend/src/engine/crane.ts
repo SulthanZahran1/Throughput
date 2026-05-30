@@ -32,7 +32,7 @@ export function createCrane(params: CraneParams): Crane {
 /**
  * Get crane speed (cells per second)
  */
-function getCraneSpeed(crane: Crane, hasAfterburners: boolean, speedMultiplier: number = 1.0): number {
+function getCraneSpeed(hasAfterburners: boolean, speedMultiplier: number = 1.0): number {
   const baseSpeed = 2;  // Base: 2 cells/sec
   let speed = baseSpeed;
   if (hasAfterburners) speed *= 1.3;
@@ -201,7 +201,7 @@ export function tickCrane(
   flags: SimulationFlags,
   speedMultiplier: number = 1.0
 ): TickCraneResult | null {
-  const speed = getCraneSpeed(crane, flags.afterburners, speedMultiplier);
+  const speed = getCraneSpeed(flags.afterburners, speedMultiplier);
   
   switch (crane.state) {
     case 'IDLE': {
@@ -386,7 +386,7 @@ export function getEstimatedCompletionTime(
 ): number {
   if (crane.state === 'IDLE') return 0;
   
-  const speed = getCraneSpeed(crane, flags.afterburners);
+  const speed = getCraneSpeed(flags.afterburners, speedMultiplier);
   let time = 0;
   
   // Time to finish current transfer (if any)

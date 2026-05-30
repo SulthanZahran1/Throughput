@@ -6,7 +6,7 @@ import { isAvailable, createTransferJob, assignJob } from '../crane';
 import { findStorageSlot, canStore } from '../storage';
 import { canRetrieve } from '../retrieval';
 import { trySpawnOrder } from '../orders';
-import type { SimulationFlags, Order, SimulationEvent } from '../types';
+import type { SimulationFlags, Order, SimulationEvent, ItemType, CellKey } from '../types';
 
 /**
  * Integration tests for the full simulation flow.
@@ -243,7 +243,7 @@ describe('Integration Tests', () => {
         type: 'retrieve',
         priority: 'normal',
         orderClass: 'normal',
-        itemType: targetItemType as any,
+        itemType: targetItemType ?? 'red',
         deadline: 100,
         maxDeadline: 100,
         createdAt: 0,
@@ -304,7 +304,7 @@ describe('Integration Tests', () => {
         type: 'retrieve',
         priority: 'normal',
         orderClass: 'normal',
-        itemType: targetItemType as any,
+        itemType: targetItemType ?? 'red',
         deadline: 100,
         maxDeadline: 100,
         createdAt: 0,
@@ -415,7 +415,7 @@ describe('Integration Tests', () => {
       context.lastOrderTime = 0;
       
       // Find 2 different item types that exist in storage
-      const itemTypes: Array<{ type: string; sourceKey: string }> = [];
+      const itemTypes: Array<{ type: ItemType; sourceKey: CellKey }> = [];
       for (const key of context.grid.storageSlots) {
         const slot = context.grid.slots.get(key)!;
         if (slot.item && !itemTypes.find(it => it.type === slot.item!.type)) {
@@ -431,7 +431,7 @@ describe('Integration Tests', () => {
         type: 'retrieve',
         priority: 'normal',
         orderClass: 'normal',
-        itemType: itemTypes[0].type as any,
+        itemType: itemTypes[0].type,
         deadline: 100,
         maxDeadline: 100,
         createdAt: 0,
@@ -446,7 +446,7 @@ describe('Integration Tests', () => {
         type: 'retrieve',
         priority: 'normal',
         orderClass: 'normal',
-        itemType: itemTypes[1].type as any,
+        itemType: itemTypes[1].type,
         deadline: 100,
         maxDeadline: 100,
         createdAt: 0,
@@ -481,7 +481,7 @@ describe('Integration Tests', () => {
       context.orders = [];
       
       // Find item types that exist in storage
-      const itemTypes: string[] = [];
+      const itemTypes: ItemType[] = [];
       for (const key of context.grid.storageSlots) {
         const slot = context.grid.slots.get(key)!;
         if (slot.item && !itemTypes.includes(slot.item.type)) {
@@ -497,7 +497,7 @@ describe('Integration Tests', () => {
         type: 'retrieve',
         priority: 'normal',
         orderClass: 'normal',
-        itemType: itemTypes[0] as any,
+        itemType: itemTypes[0],
         deadline: 100,
         maxDeadline: 100,
         createdAt: 0,
@@ -512,7 +512,7 @@ describe('Integration Tests', () => {
         type: 'retrieve',
         priority: 'normal',
         orderClass: 'normal',
-        itemType: itemTypes[1] as any,
+        itemType: itemTypes[1],
         deadline: 100,
         maxDeadline: 100,
         createdAt: 0,
@@ -742,7 +742,7 @@ describe('Integration Tests', () => {
         tickSimulation(context, 0.5);
         
         // Crane should eventually start moving to store the item
-        if ((crane as any).state === 'MOVING_TO_DEST') {
+        if (String(crane.state) === 'MOVING_TO_DEST') {
           craneReassigned = true;
           break;
         }
