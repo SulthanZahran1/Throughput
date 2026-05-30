@@ -5,6 +5,15 @@ All notable changes to this project will be documented in this file.
 ## [Unreleased]
 
 ### Added
+- **Phase 3: Mobile-First UI** — Complete mobile-first responsive UI for the hybrid operations-manager gameplay
+  - `components/game/TopHUD.tsx` — Compact top bar with Shift number, countdown timer, System Integrity chunks, Emergency Power meter, Queue load, and Policy indicator
+  - `components/game/MobileOperationsBoard.tsx` — Operations board for mobile with Flow Status (input/output/storage), Zone Summaries (fullness % + risk labels), and Crane Task Board (per-crane job status)
+  - `components/game/ExpandableOrderStrip.tsx` — Always-visible critical order strip showing top 3 highest-risk orders with compact cards; expandable full queue with order diagnostics (ETA, bottleneck, breach risk) and ability preview integration (24→11 · SAVES)
+  - `components/game/BottomActionBar.tsx` — Bottom action bar with 6 buttons: Policy, Priority Override (35 EP), Turbo Crane (35 EP), Deadline Freeze (60 EP), Reject Contract (1 HP), Core Surge (1 HP); each shows cost, disabled state, and active indicators
+  - `components/game/PolicyPickerSheet.tsx` — Bottom sheet policy picker with icon, description, cooldown display, and active state for all 6 automation policies
+  - `components/game/IntegrityActionConfirmSheet.tsx` — Confirmation sheet for Reject Contract and Core Surge, showing net integrity gain/loss and HP-after calculation
+  - `store/uiStore.ts` — Added Phase 3 state: selectedAbility, showPolicyPicker, showConfirmSheet, confirmAction, confirmTargetOrderId, isOrderStripExpanded with corresponding actions
+  - `components/screens/GameScreen.tsx` — Rewritten with mobile-first responsive layout: mobile (TopHUD → OpsBoard → OrderStrip → ActionBar) and desktop (lg+) with detailed grid + order panel + stats panel; integrated ability activation via engine simulation (activateAbility, switchSimulationPolicy) with correct ability ID mapping
 - **Phase 2: Core Abilities** — Playable emergency action layer for the hybrid operations-manager loop
   - `engine/simulation.ts` — Added `activateAbility()` dispatcher plus concrete Priority Override, Turbo Crane, Deadline Freeze, Reject Contract, and Core Surge activation paths
   - Priority Override spends 35 EP, safely interrupts only eligible cranes, assigns the selected order immediately, and returns current/projected ETA metadata
