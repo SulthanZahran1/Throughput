@@ -15,10 +15,7 @@ import { getEstimatedCompletionTime } from './crane';
 // ============================================================================
 
 /** Get the effective crane speed (cells/sec) considering upgrades and active abilities */
-function getEffectiveCraneSpeed(
-  crane: Crane,
-  context: SimulationContext
-): number {
+function getEffectiveCraneSpeed(context: SimulationContext): number {
   const baseSpeed = 2;
   let multiplier = 1.0;
 
@@ -62,13 +59,7 @@ function sortOrdersByPolicy(
       sorted.sort((a, b) => a.deadline - b.deadline);
       break;
     case 'nearest_first': {
-      // Estimate distance from first crane to order source
-      // Simple heuristic: use nearest crane to any relevant slot
-      const getDist = (o: Order): number => {
-        // Best-effort distance; use 0 as fallback
-        return 0;
-      };
-      sorted.sort((a, b) => getDist(a) - getDist(b));
+      sorted.sort((a, b) => a.createdAt - b.createdAt);
       break;
     }
     case 'storage_first':
@@ -216,7 +207,7 @@ export function computeExactEta(
 
   // Estimate average order duration based on grid size
   const avgDistance = context.grid.width + context.grid.height; // Diagonal max
-  const avgSpeed = getEffectiveCraneSpeed(context.cranes[0] || { x: 0, y: 0 } as Crane, context);
+  const avgSpeed = getEffectiveCraneSpeed(context);
   const avgTravel = avgDistance / avgSpeed;
   const avgDuration = avgTravel + transferTime * 2;
   const queueTime = queueIndex * avgDuration;
@@ -232,7 +223,7 @@ export function computeExactEta(
 
     const distToSource = manhattanDistance(cranePos, endpoints.source);
     const distSourceToDest = manhattanDistance(endpoints.source, endpoints.dest);
-    const speed = getEffectiveCraneSpeed(crane, context);
+    const speed = getEffectiveCraneSpeed(context);
     const travelTime = (distToSource + distSourceToDest) / speed;
 
     // The crane might still be busy, but we use availTime to account for waiting
