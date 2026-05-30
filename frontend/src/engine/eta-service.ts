@@ -4,7 +4,6 @@ import type {
   AutomationPolicy,
   EtaResult,
   EtaDesignation,
-  Crane,
   CellKey,
 } from './types';
 import { manhattanDistance, fromKey } from './types';
@@ -198,12 +197,8 @@ export function computeExactEta(
   const transferTime = getTransferTime(context);
 
   // --- Queue position estimation ---
-  const pendingOrders = context.orders.filter(
-    o => o.id !== order.id
-  );
-  const sortedQueue = sortOrdersByPolicy(pendingOrders, policy);
-  let queueIndex = sortedQueue.findIndex(o => o.id === order.id);
-  if (queueIndex === -1) queueIndex = 0; // Not in queue? treat as first
+  const sortedQueue = sortOrdersByPolicy(context.orders, policy);
+  const queueIndex = Math.max(0, sortedQueue.findIndex(o => o.id === order.id));
 
   // Estimate average order duration based on grid size
   const avgDistance = context.grid.width + context.grid.height; // Diagonal max
