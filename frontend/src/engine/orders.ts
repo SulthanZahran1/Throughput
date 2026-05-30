@@ -67,11 +67,14 @@ function createStoreOrder(
     id: generateOrderId(),
     type: 'store',
     priority: isVip ? 'vip' : 'normal',
+    orderClass: isVip ? 'vip' : 'normal' as Order['orderClass'],
     itemType,
     deadline,
     maxDeadline: deadline,
     createdAt: currentTime,
     vipMultiplier: isVip ? 1.5 : 1.0,
+    batchInfo: null,
+    contractInfo: null,
     sourceSlotKey: inputSlotKey,  // Track which input slot the item is in
   };
 }
@@ -106,11 +109,14 @@ function createRetrieveOrder(
     id: generateOrderId(),
     type: 'retrieve',
     priority: isVip ? 'vip' : 'normal',
+    orderClass: isVip ? 'vip' : 'normal' as Order['orderClass'],
     itemType,
     deadline,
     maxDeadline: deadline,
     createdAt: currentTime,
     vipMultiplier: isVip ? 1.5 : 1.0,
+    batchInfo: null,
+    contractInfo: null,
     sourceSlotKey: null,  // Will be resolved when assigned
   };
 }

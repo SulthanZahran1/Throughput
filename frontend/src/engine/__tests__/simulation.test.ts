@@ -312,8 +312,8 @@ describe('Simulation', () => {
       
       const score = calculateShiftScore(context);
       
-      // 5 * 100 + 2 * 50 + 30 * 10 = 500 + 100 + 300 = 900
-      expect(score).toBe(900);
+      // 5 * 100 + 2 * 50 + 30 * 10 + 5 * 25 (integrity bonus) = 500 + 100 + 300 + 125 = 1025
+      expect(score).toBe(1025);
     });
     
     it('should not return negative score', () => {

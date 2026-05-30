@@ -1,17 +1,41 @@
 import type { RNG } from './rng';
-import type { SimulationContext, SimulationEvent, TickResult, Crane, Order, ShiftResult, SimulationFlags, TransferJob, Item } from './types';
-import { tickCrane, isAvailable, createTransferJob, assignJob, getCurrentKey } from './crane';
+import type {
+  SimulationContext, SimulationEvent, TickResult, Crane, Order, ShiftResult,
+  SimulationFlags, TransferJob, Item, AutomationPolicy, EpState,
+} from './types';
+import {
+  EP_START_PER_SHIFT, EP_MAX, getBreachDamage, createEpState, EP_RECOVERY_4_ORDERS,
+} from './types';
+import type { EpGain } from './ep-system';
+import { tickCrane, isAvailable, createTransferJob, assignJob, getCurrentKey, getEstimatedCompletionTime } from './crane';
 import type { Grid } from './grid';
 import { findStorageSlot } from './storage';
 import { findRetrievalSlot } from './retrieval';
-import { trySpawnOrder, updateOrders, completeOrder, removeOrders, sortOrdersByPriority, canFulfillOrder } from './orders';
+import {
+  trySpawnOrder, updateOrders, completeOrder, removeOrders, sortOrdersByPriority, canFulfillOrder,
+} from './orders';
+import { switchPolicy, tickPolicyCooldown, findBestOrderForCraneByPolicy } from './policy';
+import { trackOrderComplete, trackBreach, spendEp, recoverEp, trackQueueClear } from './ep-system';
 
-const HP_LOSS_PER_FAILED_ORDER = 1;
+// ============================================================================
+// Shift/Breach/EP constants
+// ============================================================================
+
+export const INITIAL_INTEGRITY = 5;
+export const MAX_INTEGRITY = 10;
+
+// ============================================================================
+// Simulation Configuration
+// ============================================================================
 
 export interface SimulationConfig {
   targetFPS?: number;
-  maxDeltaTime?: number; // Prevent spiral of death on lag
+  maxDeltaTime?: number;
 }
+
+// ============================================================================
+// Create Context
+// ============================================================================
 
 /**
  * Initialize a new simulation context
@@ -30,17 +54,18 @@ export function createSimulationContext(
     craneSpeed: number;
     transferTime: number;
   },
-  rng: RNG
+  rng: RNG,
+  startingIntegrity: number = INITIAL_INTEGRITY,
+  maxIntegrity: number = MAX_INTEGRITY,
 ): SimulationContext {
   // Create cranes
   const cranes: Crane[] = [];
   for (let i = 0; i < params.craneCount; i++) {
-    // Position cranes spaced out near the input area
     const x = Math.floor(grid.width * (0.2 + (i / Math.max(params.craneCount - 1, 1)) * 0.6));
     cranes.push({
       id: `crane-${i}`,
       x,
-      y: 2, // Start near input
+      y: 2,
       targetX: x,
       targetY: 2,
       state: 'IDLE',
@@ -62,13 +87,29 @@ export function createSimulationContext(
     grid,
     cranes,
     orders: [],
-    zones: [], // TODO: Create zones from grid
+    zones: [],
     inventory: new Map(),
     flags,
     retrievalMode: 'fifo',
+    currentPolicy: 'balanced',
+    policyCooldownRemaining: 0,
+    lastPolicySwitchTime: 0,
+    ep: createEpState(),
+    integrity: startingIntegrity,
+    maxIntegrity,
+    activeAbilities: {
+      turbo: false,
+      turboRemaining: 0,
+      turboSpeedMultiplier: 1.5,
+      freeze: false,
+      freezeRemaining: 0,
+      coreSurge: false,
+      coreSurgeRemaining: 0,
+      coreSurgeSpeedMultiplier: 2.0,
+    },
     orderSpawnRate: params.orderSpawnRate,
     orderDeadlineBase: params.orderDeadlineBase,
-    lastOrderTime: -params.orderSpawnRate, // Allow immediate first order
+    lastOrderTime: -params.orderSpawnRate,
     rng,
     stats: {
       ordersCompleted: 0,
@@ -76,9 +117,18 @@ export function createSimulationContext(
       itemsStored: 0,
       itemsRetrieved: 0,
       vipOrdersCompleted: 0,
+      batchOrdersCompleted: 0,
+      contractOrdersCompleted: 0,
+      integrityLost: 0,
+      epSpent: 0,
+      epRecovered: 0,
     },
   };
 }
+
+// ============================================================================
+// Main Simulation Tick
+// ============================================================================
 
 /**
  * Main simulation tick - advances the simulation by dt seconds
@@ -89,16 +139,16 @@ export function tickSimulation(
   config: SimulationConfig = {}
 ): TickResult {
   const { maxDeltaTime = Infinity } = config;
-  
-  // Cap delta time to prevent spiral of death (if configured)
+
+  // Cap delta time
   const safeDt = Math.min(dt, maxDeltaTime);
-  
+
   const events: SimulationEvent[] = [];
-  
+
   // 1. Update timers
   context.shiftTimeRemaining -= safeDt;
   context.realTime += safeDt;
-  
+
   // Check for shift end
   if (context.shiftTimeRemaining <= 0) {
     context.shiftTimeRemaining = 0;
@@ -109,34 +159,80 @@ export function tickSimulation(
     });
     return { context, events, deltaTime: safeDt };
   }
-  
-  // 2. Spawn new orders
+
+  // 2. Tick policy cooldown
+  tickPolicyCooldown(context, safeDt);
+
+  // 3. Tick active abilities
+  tickAbilities(context, safeDt);
+
+  // 4. Spawn new orders
   const newOrder = trySpawnOrder(context, events);
   if (newOrder) {
     context.orders.push(newOrder);
     context.lastOrderTime = context.realTime;
   }
-  
-  // 3. Update existing orders (deadlines)
-  const { expiredOrders } = updateOrders(context, events, safeDt);
-  
-  // 4. Remove expired orders and apply HP loss
-  if (expiredOrders.length > 0) {
-    removeOrders(context, expiredOrders);
-    events.push({
-      type: 'HP_LOST',
-      timestamp: context.realTime,
-      data: { amount: expiredOrders.length * HP_LOSS_PER_FAILED_ORDER },
-    });
+
+  // 5. Update existing orders (deadlines) — skip when freeze is active
+  if (!context.activeAbilities.freeze) {
+    const { expiredOrders } = updateOrders(context, events, safeDt);
+
+    // 6. Remove expired orders and apply variable breach damage
+    if (expiredOrders.length > 0) {
+      let totalIntegrityLoss = 0;
+      for (const order of expiredOrders) {
+        const damage = getBreachDamage(order);
+        totalIntegrityLoss += damage;
+
+        // Track breach for EP system
+        trackBreach(context.ep);
+
+        // Check if this was a batch parent — fail remaining children
+        if (order.orderClass === 'batch') {
+          events.push({
+            type: 'BATCH_PARENT_FAILED',
+            timestamp: context.realTime,
+            data: {
+              orderId: order.id,
+              batchId: order.batchInfo?.batchId,
+              breachDamage: damage,
+            },
+          });
+        }
+      }
+
+      // Apply integrity loss
+      context.integrity = Math.max(0, context.integrity - totalIntegrityLoss);
+      context.stats.integrityLost += totalIntegrityLoss;
+
+      events.push({
+        type: 'INTEGRITY_LOST',
+        timestamp: context.realTime,
+        data: { amount: totalIntegrityLoss, remaining: context.integrity },
+      });
+
+      removeOrders(context, expiredOrders);
+
+      // Check for run-ending condition
+      if (context.integrity <= 0) {
+        events.push({
+          type: 'SHIFT_END',
+          timestamp: context.realTime,
+          data: { reason: 'integrity_depleted' },
+        });
+        return { context, events, deltaTime: safeDt };
+      }
+    }
   }
-  
-  // 5. Create jobs for orders that don't have one yet
+
+  // 7. Create jobs for orders using policy-based ordering
   assignJobsToCranes(context);
-  
-  // 6. Tick all cranes
+
+  // 8. Tick all cranes
+  const speedMult = getEffectiveSpeedMultiplier(context);
   for (const crane of context.cranes) {
-    const result = tickCrane(crane, safeDt, context.grid, context.flags);
-    
+    const result = tickCrane(crane, safeDt, context.grid, context.flags, speedMult);
+
     if (result?.event === 'pickup_complete' && result.item) {
       events.push({
         type: 'CRANE_PICKUP',
@@ -144,33 +240,76 @@ export function tickSimulation(
         data: { craneId: crane.id, itemId: result.item.id, cellKey: result.cellKey },
       });
     }
-    
+
     if (result?.event === 'dropoff_complete' && result.item) {
       events.push({
         type: 'CRANE_DROPOFF',
         timestamp: context.realTime,
         data: { craneId: crane.id, itemId: result.item.id, cellKey: result.cellKey },
       });
-      
-      // Track stats and complete orders
+
       handleDropoff(result.orderId, result.item, result.cellKey!, context, events);
     }
   }
-  
+
+  // 9. Track EP recovery from queue clear
+  if (events.length > 0) {
+    const queueCleared = trackQueueClear(context.ep, context.orders.length + 1, context.orders.length);
+    if (queueCleared > 0) {
+      context.stats.epRecovered += queueCleared;
+      events.push({
+        type: 'EP_CHANGED',
+        timestamp: context.realTime,
+        data: { amount: queueCleared, reason: 'queue_clear', total: context.ep.current },
+      });
+    }
+  }
+
   return { context, events, deltaTime: safeDt };
 }
 
-/**
- * Create and assign jobs to available cranes
- * Each job corresponds to one order and tracks the full lifecycle
- */
+// ============================================================================
+// Ability Ticking
+// ============================================================================
+
+function tickAbilities(context: SimulationContext, dt: number): void {
+  const ab = context.activeAbilities;
+
+  if (ab.turbo) {
+    ab.turboRemaining -= dt;
+    if (ab.turboRemaining <= 0) {
+      ab.turbo = false;
+      ab.turboRemaining = 0;
+    }
+  }
+
+  if (ab.freeze) {
+    ab.freezeRemaining -= dt;
+    if (ab.freezeRemaining <= 0) {
+      ab.freeze = false;
+      ab.freezeRemaining = 0;
+    }
+  }
+
+  if (ab.coreSurge) {
+    ab.coreSurgeRemaining -= dt;
+    if (ab.coreSurgeRemaining <= 0) {
+      ab.coreSurge = false;
+      ab.coreSurgeRemaining = 0;
+    }
+  }
+}
+
+// ============================================================================
+// Job Assignment
+// ============================================================================
+
 function assignJobsToCranes(context: SimulationContext): void {
-  // First, handle orphaned cranes (holding items but job's order expired or invalid)
+  // Handle orphaned cranes (holding items but job's order expired or invalid)
   for (const crane of context.cranes) {
     if (crane.state === 'IDLE' && crane.heldItem && crane.currentJob) {
-      // Check if the job's order still exists
       const orderExists = context.orders.some(o => o.id === crane.currentJob!.orderId);
-      
+
       if (!orderExists) {
         // Orphaned item - create a storage job for it
         const storeKey = findStorageSlot(
@@ -180,74 +319,72 @@ function assignJobsToCranes(context: SimulationContext): void {
           { smartSorting: context.flags.smartSorting, zoneMastery: context.flags.zoneMastery },
           context.rng
         );
-        
+
         if (storeKey) {
-          // Create emergency storage job
           const orphanJob: TransferJob = {
             id: `orphan-${Date.now()}`,
             orderId: 'orphan-order',
             jobType: 'store',
-            sourceKey: getCurrentKey(crane), // Current position
+            sourceKey: getCurrentKey(crane),
             destKey: storeKey,
             phase: 'MOVING_TO_DEST',
             expectedItemType: crane.heldItem.type,
           };
-          
+
           crane.currentJob = orphanJob;
           crane.state = 'MOVING_TO_DEST';
-          crane.movingAxis = null;  // Reset movement axis for new target
+          crane.movingAxis = null;
           const destSlot = context.grid.slots.get(storeKey)!;
           crane.targetX = destSlot.x;
           crane.targetY = destSlot.y;
         }
       } else if (crane.currentJob.phase === 'MOVING_TO_DEST') {
-        // Valid job, continue to destination
         const destSlot = context.grid.slots.get(crane.currentJob.destKey);
         if (destSlot) {
           crane.state = 'MOVING_TO_DEST';
-          crane.movingAxis = null;  // Reset movement axis for new target
+          crane.movingAxis = null;
           crane.targetX = destSlot.x;
           crane.targetY = destSlot.y;
         }
       }
     }
   }
-  
+
   // Find available cranes (IDLE with no job and no item)
   const availableCranes = context.cranes.filter(c => isAvailable(c));
   if (availableCranes.length === 0) return;
-  
+
   // Find orders that don't have a job assigned yet
   const unassignedOrders = context.orders.filter(order => {
-    // Check if any crane already has a job for this order
-    return !context.cranes.some(c => 
-      c.currentJob?.orderId === order.id
-    );
+    return !context.cranes.some(c => c.currentJob?.orderId === order.id);
   });
-  
+
   if (unassignedOrders.length === 0) return;
-  
-  // Sort by priority
-  let sortedOrders = sortOrdersByPriority(unassignedOrders);
-  
-  // Assign jobs to available cranes
+
+  // Use policy-based ordering instead of simple priority
   for (const crane of availableCranes) {
-    const order = findBestOrderForCrane(crane, sortedOrders, context);
-    
+    const order = findBestOrderForCraneByPolicy(
+      [crane],
+      unassignedOrders,
+      context.currentPolicy,
+      context.grid,
+    );
+
     if (order) {
       const job = createJobForOrder(order, context, crane);
       if (job) {
         assignJob(crane, job);
-        // Remove this order from the pool so it's not assigned to another crane
-        sortedOrders = sortedOrders.filter(o => o.id !== order.id);
+        const idx = unassignedOrders.indexOf(order);
+        if (idx !== -1) unassignedOrders.splice(idx, 1);
       }
     }
   }
 }
 
-/**
- * Create a TransferJob for an order
- */
+// ============================================================================
+// Create Job for Order
+// ============================================================================
+
 function createJobForOrder(
   order: Order,
   context: SimulationContext,
@@ -256,26 +393,23 @@ function createJobForOrder(
   if (order.type === 'store') {
     // Find source (input slot with the item)
     let sourceKey = order.sourceSlotKey;
-    
-    // Validate source slot
+
     if (sourceKey) {
       const sourceSlot = context.grid.slots.get(sourceKey);
       if (!sourceSlot || !sourceSlot.item || sourceSlot.item.type !== order.itemType) {
         sourceKey = null;
       }
     }
-    
-    // Find alternative input slot
+
     if (!sourceKey) {
       sourceKey = context.grid.inputSlots.find(key => {
         const slot = context.grid.slots.get(key)!;
         return slot.item?.type === order.itemType;
       }) || null;
     }
-    
+
     if (!sourceKey) return null;
-    
-    // Find destination (storage slot)
+
     const destKey = findStorageSlot(
       context.grid,
       context.zones,
@@ -283,9 +417,9 @@ function createJobForOrder(
       { smartSorting: context.flags.smartSorting, zoneMastery: context.flags.zoneMastery },
       context.rng
     );
-    
+
     if (!destKey) return null;
-    
+
     return createTransferJob(
       order.id,
       'store',
@@ -303,13 +437,12 @@ function createJobForOrder(
       crane,
       context.rng
     );
-    
+
     if (!sourceKey) return null;
-    
-    // Destination is output area (use first output slot)
+
     const destKey = context.grid.outputSlots[0];
     if (!destKey) return null;
-    
+
     return createTransferJob(
       order.id,
       'retrieve',
@@ -320,29 +453,10 @@ function createJobForOrder(
   }
 }
 
-/**
- * Find the best order for a crane to handle
- */
-function findBestOrderForCrane(
-  _crane: Crane,
-  orders: Order[],
-  context: SimulationContext
-): Order | null {
-  for (const order of orders) {
-    // Check if order can be fulfilled
-    if (!canFulfillOrder(order, context.grid)) {
-      continue;
-    }
-    
-    return order;
-  }
-  
-  return null;
-}
+// ============================================================================
+// Handle Dropoff
+// ============================================================================
 
-/**
- * Handle a crane dropping off an item
- */
 function handleDropoff(
   orderId: string | undefined,
   item: Item,
@@ -351,7 +465,7 @@ function handleDropoff(
   events: SimulationEvent[]
 ): void {
   const slot = context.grid.slots.get(cellKey)!;
-  
+
   if (slot.type === 'storage') {
     // Item stored
     events.push({
@@ -360,20 +474,21 @@ function handleDropoff(
       data: { itemId: item.id, itemType: item.type, cellKey },
     });
     context.stats.itemsStored++;
-    
+
     // Find and complete store order
-    let storeOrder = context.orders.find(o => 
+    let storeOrder = context.orders.find(o =>
       o.type === 'store' && o.id === orderId
     );
-    
+
     if (!storeOrder) {
-      storeOrder = context.orders.find(o => 
+      storeOrder = context.orders.find(o =>
         o.type === 'store' && o.itemType === item.type
       );
     }
-    
+
     if (storeOrder) {
       completeOrder(storeOrder, context, events);
+      trackOrderCompleteForEp(context, storeOrder, events);
       removeOrders(context, [storeOrder]);
     }
   } else if (slot.type === 'output') {
@@ -384,68 +499,203 @@ function handleDropoff(
       data: { itemId: item.id, itemType: item.type, cellKey },
     });
     context.stats.itemsRetrieved++;
-    
-    // Find and complete retrieve order
-    let retrieveOrder = context.orders.find(o => 
+
+    let retrieveOrder = context.orders.find(o =>
       o.type === 'retrieve' && o.id === orderId
     );
-    
+
     if (!retrieveOrder) {
-      retrieveOrder = context.orders.find(o => 
+      retrieveOrder = context.orders.find(o =>
         o.type === 'retrieve' && o.itemType === item.type
       );
     }
-    
+
     if (retrieveOrder) {
       completeOrder(retrieveOrder, context, events);
+      trackOrderCompleteForEp(context, retrieveOrder, events);
       removeOrders(context, [retrieveOrder]);
+    }
+  }
+
+  // For batch orders, track child completion
+  if (orderId) {
+    const completedOrder = context.orders.find(o => o.id === orderId);
+    if (completedOrder?.batchInfo) {
+      events.push({
+        type: 'BATCH_CHILD_COMPLETED',
+        timestamp: context.realTime,
+        data: {
+          batchId: completedOrder.batchInfo.batchId,
+          childIndex: completedOrder.batchInfo.childIndex,
+          orderId,
+        },
+      });
     }
   }
 }
 
-/**
- * Check if shift should end (called after each tick)
- */
-export function checkShiftEnd(context: SimulationContext): { ended: boolean; reason: 'time' | 'hp' | null } {
+// ============================================================================
+// EP Tracking Helper
+// ============================================================================
+
+function trackOrderCompleteForEp(
+  context: SimulationContext,
+  order: Order,
+  events: SimulationEvent[]
+): void {
+  const gain: EpGain | null = trackOrderComplete(context.ep, order);
+
+  if (gain) {
+    context.stats.epRecovered += gain.amount;
+    events.push({
+      type: 'EP_CHANGED',
+      timestamp: context.realTime,
+      data: {
+        amount: gain.amount,
+        reason: gain.reason,
+        total: context.ep.current,
+      },
+    });
+  }
+}
+
+// ============================================================================
+// Policy Switching (exposed)
+// ============================================================================
+
+export function switchSimulationPolicy(
+  context: SimulationContext,
+  newPolicy: AutomationPolicy
+): { success: boolean; cooldown: number } {
+  const result = switchPolicy(context, newPolicy);
+  return { success: result.success, cooldown: result.cooldown };
+}
+
+// ============================================================================
+// EP Spending
+// ============================================================================
+
+export function spendEmergencyPower(
+  context: SimulationContext,
+  amount: number
+): { success: boolean; remaining: number } {
+  const result = spendEp(context.ep, amount);
+  if (result.success) {
+    context.stats.epSpent += amount;
+  }
+  return result;
+}
+
+// ============================================================================
+// Ability Activations (for Phase 2, stubs ready)
+// ============================================================================
+
+export function activateTurbo(context: SimulationContext): { success: boolean; duration: number } {
+  const cost = 35;
+  const result = spendEmergencyPower(context, cost);
+  if (!result.success) return { success: false, duration: 0 };
+
+  const duration = 7; // 6-8s, midpoint
+  context.activeAbilities.turbo = true;
+  context.activeAbilities.turboRemaining = duration;
+
+  return { success: true, duration };
+}
+
+export function activateFreeze(context: SimulationContext): { success: boolean; duration: number } {
+  const cost = 60;
+  const result = spendEmergencyPower(context, cost);
+  if (!result.success) return { success: false, duration: 0 };
+
+  const duration = 4; // 4 seconds
+  context.activeAbilities.freeze = true;
+  context.activeAbilities.freezeRemaining = duration;
+
+  return { success: true, duration };
+}
+
+export function activateCoreSurge(context: SimulationContext): { success: boolean; duration: number } {
+  if (context.integrity < 1) return { success: false, duration: 0 };
+
+  context.integrity -= 1;
+  context.stats.integrityLost += 1;
+
+  const duration = 6; // 6 seconds
+  context.activeAbilities.coreSurge = true;
+  context.activeAbilities.coreSurgeRemaining = duration;
+
+  // Emit INTEGRITY_LOST event
+  // (Events are emitted by caller — this is functional)
+
+  return { success: true, duration };
+}
+
+// ============================================================================
+// Get effective crane speed multiplier
+// ============================================================================
+
+export function getEffectiveSpeedMultiplier(context: SimulationContext): number {
+  let mult = 1.0;
+  if (context.activeAbilities.turbo) mult *= context.activeAbilities.turboSpeedMultiplier;
+  if (context.activeAbilities.coreSurge) mult *= context.activeAbilities.coreSurgeSpeedMultiplier;
+  return mult;
+}
+
+// ============================================================================
+// Shift End Check
+// ============================================================================
+
+export function checkShiftEnd(context: SimulationContext): { ended: boolean; reason: 'time' | 'integrity' | null } {
   if (context.shiftTimeRemaining <= 0) {
     return { ended: true, reason: 'time' };
   }
-  
-  // HP check would be done at run level
+  if (context.integrity <= 0) {
+    return { ended: true, reason: 'integrity' };
+  }
   return { ended: false, reason: null };
 }
 
-/**
- * Calculate shift score
- */
+// ============================================================================
+// Score Calculation
+// ============================================================================
+
 export function calculateShiftScore(context: SimulationContext): number {
   const { stats } = context;
-  
+
   let score = 0;
   score += stats.ordersCompleted * 100;
-  score += stats.vipOrdersCompleted * 50; // Bonus for VIP
+  score += stats.vipOrdersCompleted * 50;
+  score += stats.batchOrdersCompleted * 75;
+  score += stats.contractOrdersCompleted * 100;
   score -= stats.ordersFailed * 50;
-  
-  // Time bonus
+
   const timeBonus = Math.floor(context.shiftTimeRemaining * 10);
   score += timeBonus;
-  
+
+  // Integrity bonus
+  score += context.integrity * 25;
+
   return Math.max(0, score);
 }
 
-/**
- * Generate shift result
- */
+// ============================================================================
+// Shift Result
+// ============================================================================
+
 export function generateShiftResult(context: SimulationContext): ShiftResult {
   return {
     shiftNumber: context.shiftNumber,
-    completed: context.shiftTimeRemaining > 0,
+    completed: context.shiftTimeRemaining > 0 && context.integrity > 0,
     ordersCompleted: context.stats.ordersCompleted,
     ordersFailed: context.stats.ordersFailed,
     vipOrdersCompleted: context.stats.vipOrdersCompleted,
-    hpLost: 0, // Tracked at run level
-    hpRecovered: 0,
+    batchOrdersCompleted: context.stats.batchOrdersCompleted,
+    contractOrdersCompleted: context.stats.contractOrdersCompleted,
+    hpLost: context.stats.integrityLost,
+    hpRecovered: context.stats.epRecovered > 0 ? 0 : 0, // EP recovery isn't HP
+    epSpent: context.stats.epSpent,
+    epRecovered: context.stats.epRecovered,
     score: calculateShiftScore(context),
-    events: [], // Events are tracked separately
+    events: [],
   };
 }

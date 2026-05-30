@@ -7,7 +7,7 @@ interface UseGameLoopOptions {
   isPaused: boolean;
   targetFPS?: number;
   onTick?: (context: SimulationContext, events: ReturnType<typeof tickSimulation>['events']) => void;
-  onShiftEnd?: (reason: 'time' | 'hp') => void;
+  onShiftEnd?: (reason: 'time' | 'integrity' | 'hp') => void;
   onHpLoss?: (amount: number) => void;
 }
 

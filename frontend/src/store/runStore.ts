@@ -136,7 +136,6 @@ export const useRunStore = create<RunState & RunActions>((set, get) => ({
     totalOrdersCompleted: state.totalOrdersCompleted + result.ordersCompleted,
     totalOrdersFailed: state.totalOrdersFailed + result.ordersFailed,
   })),
-  
   damageHp: (amount) => {
     const state = get();
     const newHp = Math.max(0, state.hp - amount);

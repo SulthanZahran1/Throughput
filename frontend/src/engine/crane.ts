@@ -32,10 +32,12 @@ export function createCrane(params: CraneParams): Crane {
 /**
  * Get crane speed (cells per second)
  */
-function getCraneSpeed(_crane: Crane, hasAfterburners: boolean): number {
+function getCraneSpeed(crane: Crane, hasAfterburners: boolean, speedMultiplier: number = 1.0): number {
   const baseSpeed = 2;  // Base: 2 cells/sec
-  const speedMultiplier = hasAfterburners ? 1.3 : 1.0;
-  return baseSpeed * speedMultiplier;
+  let speed = baseSpeed;
+  if (hasAfterburners) speed *= 1.3;
+  speed *= speedMultiplier;  // Ability multiplier (turbo/core surge)
+  return speed;
 }
 
 /**
@@ -196,9 +198,10 @@ export function tickCrane(
   crane: Crane,
   dt: number,
   grid: Grid,
-  flags: SimulationFlags
+  flags: SimulationFlags,
+  speedMultiplier: number = 1.0
 ): TickCraneResult | null {
-  const speed = getCraneSpeed(crane, flags.afterburners);
+  const speed = getCraneSpeed(crane, flags.afterburners, speedMultiplier);
   
   switch (crane.state) {
     case 'IDLE': {
@@ -313,11 +316,73 @@ export function cancelJob(crane: Crane): void {
 }
 
 /**
+ * Safe Interruption Model
+ *
+ * A crane can be safely interrupted if:
+ * - Not holding an item (heldItem === null)
+ * - Not in DEPOSITING phase
+ *
+ * Interrupting means cancelling the current job and returning to IDLE.
+ * The crane will then re-evaluate and pick a new job on the next assignment tick.
+ */
+
+/**
+ * Check if a crane can be safely interrupted
+ */
+export function isCraneInterruptible(crane: Crane): boolean {
+  // Cannot interrupt if holding an item
+  if (crane.heldItem !== null) return false;
+  // Cannot interrupt while depositing
+  if (crane.state === 'DEPOSITING') return false;
+  // IDLE cranes are already interruptible (no-op)
+  if (crane.state === 'IDLE') return true;
+  // MOVING_TO_SOURCE, ACQUIRING, MOVING_TO_DEST are safe to interrupt
+  return true;
+}
+
+/**
+ * Get all interruptible cranes from a list
+ */
+export function getInterruptibleCranes(cranes: Crane[]): Crane[] {
+  return cranes.filter(c => isCraneInterruptible(c));
+}
+
+/**
+ * Safely interrupt a crane's current job.
+ * Crane returns to IDLE state ready for reassignment.
+ * Does NOT drop held items (guards against unsafe interruption).
+ * Returns true if interruption was performed, false if not allowed.
+ */
+export function interruptCrane(crane: Crane): boolean {
+  if (!isCraneInterruptible(crane)) return false;
+
+  crane.state = 'IDLE';
+  crane.currentJob = null;
+  crane.transferProgress = 0;
+  crane.movingAxis = null;
+
+  return true;
+}
+
+/**
+ * Interrupt multiple cranes safely
+ * Returns count of cranes actually interrupted
+ */
+export function interruptMultipleCranes(cranes: Crane[]): number {
+  let count = 0;
+  for (const crane of cranes) {
+    if (interruptCrane(crane)) count++;
+  }
+  return count;
+}
+
+/**
  * Get estimated time to complete current job
  */
 export function getEstimatedCompletionTime(
   crane: Crane,
-  flags: { afterburners: boolean }
+  flags: { afterburners: boolean },
+  speedMultiplier: number = 1.0
 ): number {
   if (crane.state === 'IDLE') return 0;
   

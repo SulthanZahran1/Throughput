@@ -1,5 +1,10 @@
 # Throughput: Roguelite Redesign
 
+> ⚠️ **This document is superseded by [THROUGHPUT-DESIGN.md](./THROUGHPUT-DESIGN.md).**
+> The new design moves from pure auto-battler to a hybrid operations-manager model with emergency abilities, exact ETA, policy switching, and a mobile-first operations board.
+>
+> Kept for reference; all active decisions now live in `THROUGHPUT-DESIGN.md`.
+
 ## The Problem with the Current Game
 
 Throughput has a solid simulation engine but a hollow player experience. The crane is autonomous — it stores, retrieves, and delivers on its own. The player sets retrieval modes, crane modes, and paints zones, then watches. The 10 linear levels have no replay value. There's no sound, no celebration, no visible consequence of player decisions, and no reason to come back after clearing the levels once.

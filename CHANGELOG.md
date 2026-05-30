@@ -5,6 +5,25 @@ All notable changes to this project will be documented in this file.
 ## [Unreleased]
 
 ### Added
+- **Phase 1: Simulation Foundations** — Complete implementation of all 8 subsystems for the hybrid operations-manager game design
+  - `engine/types.ts` — Expanded types: AutomationPolicy enum, full order taxonomy (VIP/Batch/Contract), variable breach damage, Emergency Power system, order diagnostics (bottleneck labels), exact ETA types, ability preview types, safe interruption model
+  - `engine/policy.ts` — 6-policy automation system with cooldown switching, policy-based order sorting, crane assignment integration
+  - `engine/order-taxonomy.ts` — VIP order creation, batch parent/child bundles, contract orders with variable breach damage
+  - `engine/ep-system.ts` — Emergency Power resource: spend/recover, streak tracking, VIP/queue-clear recovery triggers
+  - `engine/diagnostics.ts` — Order bottleneck labels (ALL CRANES BUSY, NO MATCHING ITEM, NO STORAGE SPACE, INPUT BLOCKED, OUTPUT CONGESTED, LOW DEADLINE, VIP RISK) and system-level diagnostics
+  - `engine/eta-service.ts` — Exact ETA prediction computing travel/transfer/queue time with ON TRACK/LIKELY BREACH/BLOCKED designations
+  - `engine/ability-preview.ts` — Projection hooks for Priority Override, Turbo, Freeze, Reject, Core Surge abilities
+  - `engine/simulation.ts` — Integrated policy cooldown, variable breach damage, EP tracking, integrity-based shift end, ability ticking, speed multipliers
+  - `engine/crane.ts` — Safe interruption model (isCraneInterruptible, interruptCrane, interruptMultipleCranes), speed multiplier support
+  - `store/gameStore.ts` — Synced new state fields: currentPolicy, policyCooldownRemaining, ep, epMax, integrity, maxIntegrity
+- **Design Specification** — Complete `THROUGHPUT-DESIGN.md` defining the hybrid operations-manager game: emergency abilities, exact ETA, policy system, mobile-first operations board, upgrade/contract system, difficulty curves
+- **Phase Planning Issues** — 6 GitHub issues created covering all implementation phases:
+  - #1: Phase 1 — Simulation Foundations (policy, taxonomy, economy, ETA)
+  - #2: Phase 2 — Core Abilities (5 emergency actions)
+  - #3: Phase 3 — Mobile-First UI (operations board, action bar)
+  - #4: Phase 4 — Upgrades and Contracts (roguelite layer)
+  - #5: Phase 5 — Balance and Tuning (difficulty curves)
+  - #6: First Vertical Slice (3-shift integrated milestone)
 - **Phase 11: Backend Roguelite Persistence** - New schema and APIs for roguelite meta-progression and run history
   - `backend/cmd/server/migrations/003_roguelite.sql` - Drops old levels/progress tables, creates meta + runs tables with indexes
   - `backend/internal/models/meta.go` - Meta, MetaResponse, MetaUpdate structs

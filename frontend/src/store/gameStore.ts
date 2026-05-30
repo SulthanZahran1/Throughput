@@ -13,6 +13,14 @@ export interface GameState {
   isPaused: boolean;
   lastTickTime: number;
   
+  // Phase 1: New state
+  currentPolicy: 'balanced' | 'deadline_first' | 'nearest_first' | 'storage_first' | 'retrieval_first' | 'vip_first';
+  policyCooldownRemaining: number;
+  ep: number;
+  epMax: number;
+  integrity: number;
+  maxIntegrity: number;
+  
   // Events from last tick
   lastEvents: SimulationEvent[];
   
@@ -47,6 +55,12 @@ const initialState: GameState = {
   shiftParameters: null,
   isPaused: false,
   lastTickTime: 0,
+  currentPolicy: 'balanced',
+  policyCooldownRemaining: 0,
+  ep: 100,
+  epMax: 100,
+  integrity: 5,
+  maxIntegrity: 5,
   lastEvents: [],
   pendingAnimations: [],
 };
@@ -60,11 +74,25 @@ export const useGameStore = create<GameState & GameActions>((set) => ({
     shiftNumber: params.shiftNumber,
     isPaused: false,
     lastTickTime: performance.now(),
+    currentPolicy: context.currentPolicy,
+    policyCooldownRemaining: context.policyCooldownRemaining,
+    ep: context.ep.current,
+    epMax: context.ep.max,
+    integrity: context.integrity,
+    maxIntegrity: context.maxIntegrity,
     lastEvents: [],
     pendingAnimations: [],
   }),
   
-  setContext: (context) => set({ context }),
+  setContext: (context) => set({
+    context,
+    currentPolicy: context.currentPolicy,
+    policyCooldownRemaining: context.policyCooldownRemaining,
+    ep: context.ep.current,
+    epMax: context.ep.max,
+    integrity: context.integrity,
+    maxIntegrity: context.maxIntegrity,
+  }),
   
   setSimulationState: (updates) => set((state) => ({
     context: state.context ? { ...state.context, ...updates } : null,

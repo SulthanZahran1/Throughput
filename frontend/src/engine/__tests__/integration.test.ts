@@ -150,11 +150,14 @@ describe('Integration Tests', () => {
         id: 'test-store-order',
         type: 'store',
         priority: 'normal',
+        orderClass: 'normal',
         itemType: 'red',
         deadline: 100,
         maxDeadline: 100,
         createdAt: 0,
         vipMultiplier: 1,
+        batchInfo: null,
+        contractInfo: null,
         sourceSlotKey: inputKey,
       });
       
@@ -239,13 +242,16 @@ describe('Integration Tests', () => {
         id: 'manual-retrieve-order',
         type: 'retrieve',
         priority: 'normal',
-        itemType: targetItemType,
+        orderClass: 'normal',
+        itemType: targetItemType as any,
         deadline: 100,
         maxDeadline: 100,
         createdAt: 0,
         vipMultiplier: 1,
+        batchInfo: null,
+        contractInfo: null,
         sourceSlotKey: null,
-      });
+      } as Order);
       
       // Run simulation until crane is assigned
       let craneAssigned = false;
@@ -297,13 +303,16 @@ describe('Integration Tests', () => {
         id: 'manual-retrieve-order',
         type: 'retrieve',
         priority: 'normal',
-        itemType: targetItemType,
+        orderClass: 'normal',
+        itemType: targetItemType as any,
         deadline: 100,
         maxDeadline: 100,
         createdAt: 0,
         vipMultiplier: 1,
+        batchInfo: null,
+        contractInfo: null,
         sourceSlotKey: null,
-      });
+      } as Order);
       
       // Run simulation until crane picks up the item
       // Note: With Manhattan movement (no diagonals), crane needs more time
@@ -421,25 +430,31 @@ describe('Integration Tests', () => {
         id: 'order-a',
         type: 'retrieve',
         priority: 'normal',
-        itemType: itemTypes[0].type,
+        orderClass: 'normal',
+        itemType: itemTypes[0].type as any,
         deadline: 100,
         maxDeadline: 100,
         createdAt: 0,
         vipMultiplier: 1,
+        batchInfo: null,
+        contractInfo: null,
         sourceSlotKey: itemTypes[0].sourceKey,
-      });
+      } as Order);
       
       context.orders.push({
         id: 'order-b',
         type: 'retrieve',
         priority: 'normal',
-        itemType: itemTypes[1].type,
+        orderClass: 'normal',
+        itemType: itemTypes[1].type as any,
         deadline: 100,
         maxDeadline: 100,
         createdAt: 0,
         vipMultiplier: 1,
+        batchInfo: null,
+        contractInfo: null,
         sourceSlotKey: itemTypes[1].sourceKey,
-      });
+      } as Order);
       
       // Single tick to trigger assignment
       tickSimulation(context, 0.1);
@@ -481,25 +496,31 @@ describe('Integration Tests', () => {
         id: 'order-1',
         type: 'retrieve',
         priority: 'normal',
-        itemType: itemTypes[0],
+        orderClass: 'normal',
+        itemType: itemTypes[0] as any,
         deadline: 100,
         maxDeadline: 100,
         createdAt: 0,
         vipMultiplier: 1,
+        batchInfo: null,
+        contractInfo: null,
         sourceSlotKey: null,
-      });
+      } as Order);
       
       context.orders.push({
         id: 'order-2',
         type: 'retrieve',
         priority: 'normal',
-        itemType: itemTypes[1],
+        orderClass: 'normal',
+        itemType: itemTypes[1] as any,
         deadline: 100,
         maxDeadline: 100,
         createdAt: 0,
         vipMultiplier: 1,
+        batchInfo: null,
+        contractInfo: null,
         sourceSlotKey: null,
-      });
+      } as Order);
       
       // Run simulation until cranes are assigned
       for (let i = 0; i < 10; i++) {
@@ -572,6 +593,9 @@ describe('Integration Tests', () => {
       });
       
       let vipOrderAssigned = false;
+      
+      // Switch to VIP-first policy for this test
+      context.currentPolicy = 'vip_first';
       
       // Run for a bit
       for (let i = 0; i < 100; i++) {
@@ -718,7 +742,7 @@ describe('Integration Tests', () => {
         tickSimulation(context, 0.5);
         
         // Crane should eventually start moving to store the item
-        if (crane.state === 'MOVING_TO_DEST') {
+        if ((crane as any).state === 'MOVING_TO_DEST') {
           craneReassigned = true;
           break;
         }
