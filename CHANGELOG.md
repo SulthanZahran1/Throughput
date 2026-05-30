@@ -5,6 +5,14 @@ All notable changes to this project will be documented in this file.
 ## [Unreleased]
 
 ### Added
+- **Phase 2: Core Abilities** — Playable emergency action layer for the hybrid operations-manager loop
+  - `engine/simulation.ts` — Added `activateAbility()` dispatcher plus concrete Priority Override, Turbo Crane, Deadline Freeze, Reject Contract, and Core Surge activation paths
+  - Priority Override spends 35 EP, safely interrupts only eligible cranes, assigns the selected order immediately, and returns current/projected ETA metadata
+  - Turbo Crane spends 35 EP for a 7s global speed boost; Deadline Freeze spends 60 EP and pauses order timers for 4s while shift time/cranes continue
+  - Reject Contract spends 1 System Integrity and removes the selected order; Core Surge spends 1 System Integrity for a stronger 6s global speed boost
+  - `engine/ability-preview.ts` — Fixed preview cloning so Map-backed grids survive what-if ETA projections and aligned SAVES/RISK/NO EFFECT outcome tags with the design spec
+  - `engine/eta-service.ts` — Fixed policy queue-position ETA calculation so selected-order previews compare against real queue order
+  - `engine/__tests__/abilities.test.ts` — Added focused coverage for all five abilities, preview helpers, freeze timer behavior, safe interruption, and ABILITY_USED events
 - **Phase 1: Simulation Foundations** — Complete implementation of all 8 subsystems for the hybrid operations-manager game design
   - `engine/types.ts` — Expanded types: AutomationPolicy enum, full order taxonomy (VIP/Batch/Contract), variable breach damage, Emergency Power system, order diagnostics (bottleneck labels), exact ETA types, ability preview types, safe interruption model
   - `engine/policy.ts` — 6-policy automation system with cooldown switching, policy-based order sorting, crane assignment integration
