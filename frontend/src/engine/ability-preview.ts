@@ -34,17 +34,14 @@ function getPreviewOutcome(
   deadline: number,
   netHpGain?: number
 ): PreviewOutcome {
-  if (netHpGain !== undefined) {
-    if (netHpGain > 0) return 'NET +1 HP';
+  if (netHpGain !== undefined && netHpGain > 0) {
+    return 'NET +1 HP';
   }
 
-  const wasBreaching = currentEta > deadline;
-  const isNowSafe = projectedEta <= deadline;
-  const isWorse = projectedEta > currentEta;
-
-  if (wasBreaching && isNowSafe) return 'SAVES';
-  if (!wasBreaching && isWorse) return 'RISK';
-  return 'NO EFFECT';
+  if (!Number.isFinite(currentEta) && !Number.isFinite(projectedEta)) return 'NO EFFECT';
+  if (projectedEta >= currentEta) return 'NO EFFECT';
+  if (projectedEta <= deadline) return 'SAVES';
+  return 'RISK';
 }
 
 /** Count cranes that can be safely interrupted (no item held, not depositing) */
@@ -54,7 +51,38 @@ function countSafeInterruptibleCranes(context: SimulationContext): number {
 
 /** Create a deep copy of context with modified cranes for "what-if" scenarios */
 function cloneContext(context: SimulationContext): SimulationContext {
-  return JSON.parse(JSON.stringify(context)) as SimulationContext;
+  const clonedSlots = new Map(
+    Array.from(context.grid.slots.entries()).map(([key, slot]) => [
+      key,
+      { ...slot, item: slot.item ? { ...slot.item } : null },
+    ])
+  );
+
+  return {
+    ...context,
+    grid: {
+      ...context.grid,
+      slots: clonedSlots,
+      inputSlots: [...context.grid.inputSlots],
+      outputSlots: [...context.grid.outputSlots],
+      storageSlots: [...context.grid.storageSlots],
+    },
+    cranes: context.cranes.map(crane => ({
+      ...crane,
+      heldItem: crane.heldItem ? { ...crane.heldItem } : null,
+      currentJob: crane.currentJob ? { ...crane.currentJob } : null,
+    })),
+    orders: context.orders.map(order => ({
+      ...order,
+      batchInfo: order.batchInfo ? { ...order.batchInfo } : null,
+      contractInfo: order.contractInfo ? { ...order.contractInfo } : null,
+    })),
+    zones: context.zones.map(zone => ({ ...zone, cells: [...zone.cells] })),
+    inventory: new Map(context.inventory),
+    ep: { ...context.ep },
+    activeAbilities: { ...context.activeAbilities },
+    stats: { ...context.stats },
+  };
 }
 
 // ============================================================================
