@@ -8,7 +8,6 @@ import type {
   CoreSurgePreview,
   PreviewOutcome,
   EtaResult,
-  Crane,
 } from './types';
 import { getCraneInterruptibility, getBreachDamage } from './types';
 import { computeExactEta } from './eta-service';

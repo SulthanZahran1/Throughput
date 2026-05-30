@@ -1,21 +1,24 @@
 import type { RNG } from './rng';
 import type {
   SimulationContext, SimulationEvent, TickResult, Crane, Order, ShiftResult,
-  SimulationFlags, TransferJob, Item, AutomationPolicy, EpState,
+  SimulationFlags, TransferJob, Item, AutomationPolicy,
 } from './types';
 import {
-  EP_START_PER_SHIFT, EP_MAX, getBreachDamage, createEpState, EP_RECOVERY_4_ORDERS,
+  getBreachDamage, createEpState,
 } from './types';
 import type { EpGain } from './ep-system';
-import { tickCrane, isAvailable, createTransferJob, assignJob, getCurrentKey, getEstimatedCompletionTime } from './crane';
+import {
+  tickCrane, isAvailable, createTransferJob, assignJob, getCurrentKey,
+  getInterruptibleCranes, interruptCrane,
+} from './crane';
 import type { Grid } from './grid';
 import { findStorageSlot } from './storage';
 import { findRetrievalSlot } from './retrieval';
 import {
-  trySpawnOrder, updateOrders, completeOrder, removeOrders, sortOrdersByPriority, canFulfillOrder,
+  trySpawnOrder, updateOrders, completeOrder, removeOrders,
 } from './orders';
 import { switchPolicy, tickPolicyCooldown, findBestOrderForCraneByPolicy } from './policy';
-import { trackOrderComplete, trackBreach, spendEp, recoverEp, trackQueueClear } from './ep-system';
+import { trackOrderComplete, trackBreach, spendEp, trackQueueClear } from './ep-system';
 
 // ============================================================================
 // Shift/Breach/EP constants
