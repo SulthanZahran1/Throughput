@@ -1,12 +1,13 @@
 import React from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
-import { useUiStore } from './store';
+import { useUiStore, useMetaStore } from './store';
 import { MainMenuScreen } from './components/screens/MainMenuScreen';
 import { GameScreen } from './components/screens/GameScreen';
 import { PreShiftScreen } from './components/screens/PreShiftScreen';
 import { UpgradePickScreen } from './components/screens/UpgradePickScreen';
 import { VictoryScreen } from './components/screens/VictoryScreen';
 import { RunOverScreen } from './components/screens/RunOverScreen';
+import { api } from './api';
 
 // Placeholder screen for Shop
 function UnlockShopScreen() {
@@ -64,7 +65,17 @@ function ScreenTransition({ children }: { children: React.ReactNode }) {
 
 export default function App() {
   const { currentScreen } = useUiStore();
-  
+  const { syncFromBackend, deviceId } = useMetaStore();
+
+  // Sync meta from backend on mount
+  React.useEffect(() => {
+    api.getMeta(deviceId).then((backendMeta) => {
+      if (backendMeta) {
+        syncFromBackend(backendMeta);
+      }
+    });
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
   const ScreenComponent = screenComponents[currentScreen] || MainMenuScreen;
   
   return (

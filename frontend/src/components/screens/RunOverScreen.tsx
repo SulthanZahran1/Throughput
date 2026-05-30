@@ -1,23 +1,56 @@
 import React from 'react';
 import { useUiStore, useRunStore, useMetaStore } from '../../store';
 import { Button } from '../ui/Button';
+import { api } from '../../api';
+
+function calculateCrateReward(result: { totalOrdersCompleted: number; won: boolean; difficulty: string }): number {
+  let reward = 0;
+  reward += result.totalOrdersCompleted * 2;
+  if (result.won) {
+    reward += 50;
+  }
+  const difficultyBonus: Record<string, number> = {
+    normal: 1,
+    hard: 1.5,
+    brutal: 2,
+  };
+  return Math.floor(reward * (difficultyBonus[result.difficulty] || 1));
+}
 
 export function RunOverScreen() {
   const { navigateTo } = useUiStore();
-  const { recordRun } = useMetaStore();
-  
+  const metaState = useMetaStore();
+  const { recordRun } = metaState;
+
   React.useEffect(() => {
     const result = useRunStore.getState().endRun(false);
     if (result) {
       recordRun(result);
+
+      // Fire-and-forget POST /api/runs
+      const cratesEarned = calculateCrateReward(result);
+      api.submitRun({
+        deviceId: metaState.deviceId,
+        seed: result.seed,
+        difficulty: result.difficulty,
+        shiftsSurvived: result.shiftsSurvived,
+        totalOrdersCompleted: result.totalOrdersCompleted,
+        totalOrdersFailed: result.totalOrdersFailed,
+        finalHp: result.finalHp,
+        maxHp: result.maxHp,
+        score: result.score,
+        cratesEarned,
+        upgradesHeld: result.upgradesHeld,
+        won: result.won,
+      });
     }
-  }, [recordRun]);
-  
+  }, [recordRun, metaState.deviceId]);
+
   return (
     <div className="relative flex flex-col items-center justify-center min-h-screen p-8 bg-slate-950 overflow-hidden text-center">
       <div className="absolute inset-0 grid-bg opacity-30 pointer-events-none" />
       <div className="absolute inset-0 bg-gradient-to-t from-red-500/10 via-transparent to-transparent" />
-      
+
       <div className="relative z-10 space-y-8 max-w-2xl">
         <div className="relative">
           <div className="absolute -inset-10 bg-red-500/20 blur-3xl rounded-full" />
@@ -28,12 +61,12 @@ export function RunOverScreen() {
             System Failure // Critical Integrity Loss
           </div>
         </div>
-        
+
         <div className="panel-industrial p-8 bg-slate-900/60 backdrop-blur-sm border-red-500/30">
           <p className="text-slate-300 text-lg leading-relaxed mb-8">
             The facility has reached critical mass. Your operational contract has been voided due to catastrophic mismanagement.
           </p>
-          
+
           <div className="grid grid-cols-2 gap-4 mb-8">
             <div className="bg-slate-950/50 p-4 border border-slate-800">
               <div className="text-[10px] text-slate-500 uppercase font-bold">Crates Salvaged</div>
@@ -44,7 +77,7 @@ export function RunOverScreen() {
               <div className="text-3xl font-black text-red-400">CORE_SYNC</div>
             </div>
           </div>
-          
+
           <Button
             size="lg"
             variant="danger"

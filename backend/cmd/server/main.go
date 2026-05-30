@@ -56,8 +56,8 @@ func main() {
 	ctx := context.Background()
 
 	// Database setup (optional — if DATABASE_URL is set)
-	var levelSvc *services.LevelService
-	var progressSvc *services.ProgressService
+	var metaSvc *services.MetaService
+	var runSvc *services.RunService
 
 	dbURL := os.Getenv("DATABASE_URL")
 	if dbURL != "" {
@@ -79,16 +79,8 @@ func main() {
 			os.Exit(1)
 		}
 
-		/*
-		// Seed level data
-		if err := seedLevels(ctx, db); err != nil {
-			slog.Error("Failed to seed levels", "error", err)
-			os.Exit(1)
-		}
-		*/
-
-		levelSvc = services.NewLevelService(db)
-		progressSvc = services.NewProgressService(db)
+		metaSvc = services.NewMetaService(db)
+		runSvc = services.NewRunService(db)
 
 		slog.Info("Database connected, migrations applied")
 	} else {
@@ -99,7 +91,7 @@ func main() {
 
 	r.Use(cors.New(cors.Config{
 		AllowOrigins:     []string{"http://localhost:5173", "http://localhost:3000", "https://throughput.zahranm.cloud"},
-		AllowMethods:     []string{"GET", "POST", "OPTIONS"},
+		AllowMethods:     []string{"GET", "POST", "PUT", "OPTIONS"},
 		AllowHeaders:     []string{"Content-Type"},
 		AllowCredentials: true,
 	}))
@@ -119,9 +111,9 @@ func main() {
 
 	r.POST("/api/log", api.HandleFrontendLogs)
 
-	// Register level + progress routes (only if DB is available)
-	if levelSvc != nil && progressSvc != nil {
-		api.RegisterRoutes(r, levelSvc, progressSvc)
+	// Register roguelite routes (only if DB is available)
+	if metaSvc != nil && runSvc != nil {
+		api.RegisterRoutes(r, metaSvc, runSvc)
 	}
 
 	// Serve static frontend files

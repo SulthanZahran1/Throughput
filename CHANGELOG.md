@@ -4,6 +4,28 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### Added
+- **Phase 11: Backend Roguelite Persistence** - New schema and APIs for roguelite meta-progression and run history
+  - `backend/cmd/server/migrations/003_roguelite.sql` - Drops old levels/progress tables, creates meta + runs tables with indexes
+  - `backend/internal/models/meta.go` - Meta, MetaResponse, MetaUpdate structs
+  - `backend/internal/models/run.go` - Run, RunSubmission structs with cratesEarned
+  - `backend/internal/storage/meta.go` - GetMeta, UpsertMeta, EnsureMeta, UpdateMetaBestScores queries
+  - `backend/internal/storage/runs.go` - InsertRun, GetRunsByDevice queries
+  - `backend/internal/services/meta.go` - GetMeta, UpdateMeta with union/merge strategy
+  - `backend/internal/services/runs.go` - SubmitRun inserts run + updates meta stats atomically
+  - `backend/internal/api/meta.go` - GET /api/meta, PUT /api/meta handlers
+  - `backend/internal/api/runs.go` - POST /api/runs handler
+  - Updated `api/router.go` - New route registration for meta/runs instead of levels/progress
+  - Updated `cmd/server/main.go` - Wire new services, add PUT to CORS methods, remove old level/progress wiring
+  - Deleted old files: levels.go, progress.go (api, services, storage, models)
+- **Phase 11: Frontend API Sync** - Offline-friendly backend sync
+  - `frontend/src/api/client.ts` - API client with GET /api/meta, PUT /api/meta, POST /api/runs
+  - `frontend/src/api/index.ts` - Barrel export
+  - `App.tsx` - Sync meta from backend on mount
+  - `VictoryScreen.tsx`, `RunOverScreen.tsx` - Fire-and-forget POST /api/runs on run end with cratesEarned
+- **Deployment Config** - Fixed docker-compose.yml DATABASE_URL password masking artifact
+- **Docs** - This CHANGELOG entry per AGENTS.md requirements
+
 ### Fixed
 - **Run Progression Order Totals** - Restored order completion/failure tracking in engine stats
   - `completeOrder()` now increments `ordersCompleted`

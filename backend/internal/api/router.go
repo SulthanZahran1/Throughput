@@ -6,16 +6,15 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
-func RegisterRoutes(r *gin.Engine, levelSvc *services.LevelService, progressSvc *services.ProgressService) {
+func RegisterRoutes(r *gin.Engine, metaSvc *services.MetaService, runSvc *services.RunService) {
 	apiGroup := r.Group("/api")
 
-	// Levels
-	lh := NewLevelHandler(levelSvc)
-	apiGroup.GET("/levels", lh.GetAll)
-	apiGroup.GET("/levels/:id", lh.GetByID)
+	// Meta progression
+	mh := NewMetaHandler(metaSvc)
+	apiGroup.GET("/meta", mh.GetMeta)
+	apiGroup.PUT("/meta", mh.UpdateMeta)
 
-	// Progress
-	ph := NewProgressHandler(progressSvc)
-	apiGroup.GET("/progress", ph.GetProgress)
-	apiGroup.POST("/progress/:levelId", ph.SubmitResult)
+	// Runs
+	rh := NewRunHandler(runSvc)
+	apiGroup.POST("/runs", rh.SubmitRun)
 }
