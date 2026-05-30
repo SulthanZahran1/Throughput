@@ -4,6 +4,7 @@ import type {
   AutomationPolicy,
   EtaResult,
   EtaDesignation,
+  Crane,
   CellKey,
 } from './types';
 import { manhattanDistance, fromKey } from './types';
