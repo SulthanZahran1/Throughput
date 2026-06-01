@@ -8,29 +8,63 @@ import { UpgradePickScreen } from './components/screens/UpgradePickScreen';
 import { VictoryScreen } from './components/screens/VictoryScreen';
 import { RunOverScreen } from './components/screens/RunOverScreen';
 import { api } from './api';
+import { UPGRADES } from './data/upgrades';
 
-// Placeholder screen for Shop
 function UnlockShopScreen() {
   const { navigateTo } = useUiStore();
+  const { crates, unlockedCards, unlockCard } = useMetaStore();
+  const lockedUpgrades = UPGRADES.filter(upgrade => !unlockedCards.includes(upgrade.id));
   
   return (
-    <div className="relative flex flex-col items-center justify-center min-h-screen p-8 bg-slate-950 overflow-hidden">
+    <div className="relative min-h-screen overflow-y-auto bg-slate-950 p-6 text-white">
       <div className="absolute inset-0 grid-bg opacity-20 pointer-events-none" />
-      <div className="panel-industrial p-12 bg-slate-900/80 backdrop-blur-sm flex flex-col items-center gap-6 text-center">
-        <h1 className="text-4xl font-black text-white italic">UNLOCK SHOP</h1>
-        <p className="text-slate-400 font-mono">ENCRYPTED_DATABASE_ACCESS_REQUIRED</p>
-        <div className="w-64 h-1 bg-slate-800 relative overflow-hidden">
-          <motion.div 
-            className="absolute inset-0 bg-blue-500"
-            initial={{ left: '-100%' }}
-            animate={{ left: '100%' }}
-            transition={{ duration: 2, repeat: Infinity, ease: "linear" }}
-          />
+      <div className="relative z-10 mx-auto max-w-6xl">
+        <div className="mb-6 flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
+          <div>
+            <div className="text-blue-500 font-mono tracking-[0.3em] uppercase text-xs mb-2">Roguelite Unlock Database</div>
+            <h1 className="text-4xl font-black italic tracking-tighter text-glow">UNLOCK SHOP</h1>
+            <p className="mt-2 max-w-2xl text-sm text-slate-400">Spend crates from completed runs to expand future upgrade offerings. Starting cards remain available by default.</p>
+          </div>
+          <div className="rounded-2xl border border-yellow-500/30 bg-yellow-500/10 px-5 py-3 font-mono text-sm text-yellow-200">
+            CRATES: <span className="text-2xl font-black">{crates}</span>
+          </div>
         </div>
-        <p className="text-slate-500 text-sm">Feature coming in next security patch...</p>
+
+        <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+          {lockedUpgrades.map(upgrade => {
+            const canAfford = crates >= upgrade.unlockCost;
+            return (
+              <div key={upgrade.id} className="rounded-2xl border border-slate-800 bg-slate-900/85 p-5 shadow-xl">
+                <div className="mb-3 flex items-start justify-between gap-3">
+                  <div>
+                    <div className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-500">{upgrade.category} · {upgrade.rarity}</div>
+                    <h2 className="mt-1 text-xl font-black uppercase italic">{upgrade.name}</h2>
+                  </div>
+                  <div className="rounded-full bg-slate-950 px-3 py-1 text-xs font-bold text-yellow-300">{upgrade.unlockCost}</div>
+                </div>
+                <p className="min-h-12 text-sm text-slate-400">{upgrade.description}</p>
+                {upgrade.prerequisites.length > 0 && (
+                  <p className="mt-3 text-[11px] uppercase tracking-wider text-slate-500">Requires: {upgrade.prerequisites.join(', ')}</p>
+                )}
+                <button
+                  onClick={() => unlockCard(upgrade.id)}
+                  disabled={!canAfford}
+                  className="mt-5 w-full rounded-xl border border-blue-500/40 bg-blue-500/10 px-4 py-3 text-xs font-black uppercase tracking-[0.2em] text-blue-100 transition hover:bg-blue-500/20 disabled:cursor-not-allowed disabled:border-slate-800 disabled:bg-slate-900 disabled:text-slate-600"
+                >
+                  {canAfford ? 'Unlock Card' : 'Insufficient Crates'}
+                </button>
+              </div>
+            );
+          })}
+        </div>
+
+        {lockedUpgrades.length === 0 && (
+          <div className="rounded-2xl border border-green-500/30 bg-green-500/10 p-8 text-center text-green-200">All upgrades unlocked.</div>
+        )}
+
         <button
           onClick={() => navigateTo('main_menu')}
-          className="mt-4 px-8 py-2 border border-slate-700 text-slate-400 hover:text-white hover:border-white transition-all uppercase text-xs font-bold tracking-widest"
+          className="my-8 rounded-full border border-slate-700 px-8 py-3 text-xs font-bold uppercase tracking-widest text-slate-300 transition hover:border-white hover:text-white"
         >
           Back to Terminal
         </button>

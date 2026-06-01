@@ -169,7 +169,7 @@ export function generateShiftParameters(
   shiftNumber: number,
   seed: number,
   difficulty: 'normal' | 'hard' | 'brutal',
-  _heldUpgrades: string[],
+  heldUpgrades: string[],
   modifierId: string | null,
   flags: SimulationFlags
 ): ShiftParameters {
@@ -189,11 +189,23 @@ export function generateShiftParameters(
     brutal: 1.2,
   }[difficulty];
 
-  const deadlineMultiplier = {
+  const deadlineDivisor = {
     normal: 1,
-    hard: 1.35,
-    brutal: 1.75,
+    hard: 1.12,
+    brutal: 1.28,
   }[difficulty];
+
+  const epRecoveryDifficultyMultiplier = {
+    normal: 1,
+    hard: 0.8,
+    brutal: 0.6,
+  }[difficulty];
+
+  const stackCount = (id: string) => heldUpgrades.filter(heldId => heldId === id).length;
+  const craneSpeedBonus = (flags.craneSpeedBonus ?? 0) || stackCount('faster_cranes_1') * 0.1;
+  const transferTimeBonus = (flags.transferTimeBonus ?? 0) || stackCount('faster_transfer_1') * 0.1;
+  const shiftTimeBonus = (flags.shiftTimeBonus ?? 0) || stackCount('more_time_1') * 10;
+  const deadlineBonus = (flags.deadlineBonus ?? 0) || stackCount('slower_deadlines_1') * 0.1;
   
   const params: ShiftParameters = {
     shiftNumber,
@@ -208,22 +220,25 @@ export function generateShiftParameters(
     
     // Cranes
     craneCount: flags.multiCrane || escalation.craneCount,
-    craneSpeed: escalation.craneSpeed * (flags.afterburners ? 1.3 : 1),
-    transferTime: escalation.transferTime,
+    craneSpeed: escalation.craneSpeed * (flags.afterburners ? 1.3 : 1) * (1 + craneSpeedBonus),
+    transferTime: Math.max(0.35, escalation.transferTime * (1 - transferTimeBonus)),
     
     // Orders
     orderSpawnRate: escalation.orderSpawnRate / spawnMultiplier,
-    orderDeadlineBase: escalation.orderDeadlineBase / deadlineMultiplier,
-    vipOrderChance: flags.vipClients ? escalation.vipOrderChance : 0,
+    orderDeadlineBase: (escalation.orderDeadlineBase / deadlineDivisor) * (1 + deadlineBonus),
+    vipOrderChance: escalation.vipOrderChance,
     
     // Time
-    totalShiftTime: escalation.totalShiftTime,
+    totalShiftTime: escalation.totalShiftTime + shiftTimeBonus,
     
     // Modifier
     modifierId,
     
     // Flags applied from upgrades
-    flags,
+    flags: {
+      ...flags,
+      epRecoveryMultiplier: (flags.epRecoveryMultiplier ?? 1) * epRecoveryDifficultyMultiplier,
+    },
     retrievalMode: 'fifo', // TODO: Make configurable
   };
   

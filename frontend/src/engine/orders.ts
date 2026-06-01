@@ -1,6 +1,7 @@
 import type { RNG } from './rng';
 import type { Order, OrderType, SimulationContext, SimulationEvent, Grid } from './types';
 import { ITEM_TYPES } from './types';
+import { createBatchParent } from './order-taxonomy';
 import { canRetrieve, getRetrievableCounts } from './retrieval';
 import { canStore, getEmptySlotCount } from './storage';
 
@@ -147,6 +148,58 @@ function decideOrderType(
   return rng.nextFloat() < adjustedRatio ? 'store' : 'retrieve';
 }
 
+function createSameTypeBatchOrders(
+  params: OrderParams,
+  currentTime: number,
+  grid: Grid,
+  rng: RNG
+): Order[] {
+  const retrievable = getRetrievableCounts(grid);
+  const availableTypes = Array.from(retrievable.entries())
+    .filter(([, count]) => count >= 2)
+    .map(([type]) => type);
+
+  if (availableTypes.length === 0) return [];
+
+  const itemType = rng.nextItem(availableTypes);
+  const childCount = Math.min(3, retrievable.get(itemType) ?? 2);
+  const { children } = createBatchParent({
+    itemTypes: Array.from({ length: childCount }, () => itemType),
+    deadline: params.orderDeadlineBase * 1.25,
+    createdAt: currentTime,
+    targetType: 'retrieve',
+    breachDamage: 2,
+    rng,
+  });
+
+  return children;
+}
+
+function convertToContractOrder(order: Order, currentTime: number, rng: RNG): Order {
+  const contractProfiles = [
+    { id: 'hostile_sla', breachDamage: 3, reward: '+25 score / +8 EP', condition: 'Premium SLA: complete before the timer expires' },
+    { id: 'debt_financing', breachDamage: 2, reward: '+15 score / debt service covered', condition: 'Debt-backed job: explicit penalty, visible reward' },
+  ];
+  const profile = rng.nextItem(contractProfiles);
+
+  return {
+    ...order,
+    id: `contract-${order.id}`,
+    orderClass: 'contract',
+    priority: 'normal',
+    deadline: order.maxDeadline * 0.9,
+    maxDeadline: order.maxDeadline * 0.9,
+    createdAt: currentTime,
+    vipMultiplier: 1.25,
+    contractInfo: {
+      contractId: profile.id,
+      breachDamage: profile.breachDamage,
+      reward: profile.reward,
+      condition: profile.condition,
+    },
+  };
+}
+
 /**
  * Try to spawn a new order
  */
@@ -178,8 +231,32 @@ export function trySpawnOrder(
   const orderParams: OrderParams = {
     orderSpawnRate,
     orderDeadlineBase,
-    vipOrderChance: flags.vipClients ? 0.2 : 0,  // 20% VIP chance when enabled
+    vipOrderChance: flags.vipClients
+      ? Math.max(context.vipOrderChance ?? 0, 0.2)
+      : context.shiftNumber >= 2
+        ? (context.vipOrderChance ?? 0.2)
+        : 0,
   };
+
+  if (context.shiftNumber >= 3 && rng.nextFloat() < 0.18) {
+    const batchOrders = createSameTypeBatchOrders(orderParams, realTime, grid, rng);
+    if (batchOrders.length > 0) {
+      events.push({
+        type: 'ORDER_CREATED',
+        timestamp: realTime,
+        data: {
+          orderId: batchOrders[0].batchInfo?.parentOrderId ?? batchOrders[0].id,
+          orderType: 'batch',
+          itemType: batchOrders[0].itemType,
+          priority: 'normal',
+          deadline: batchOrders[0].deadline,
+          childCount: batchOrders.length,
+        },
+      });
+      context.orders.push(...batchOrders.slice(1));
+      return batchOrders[0];
+    }
+  }
   
   let order: Order | null = null;
   
@@ -189,6 +266,10 @@ export function trySpawnOrder(
     order = createRetrieveOrder(orderParams, realTime, grid, flags, rng);
   }
   
+  if (order && flags.contractOrders && context.shiftNumber >= 2 && rng.nextFloat() < 0.12) {
+    order = convertToContractOrder(order, realTime, rng);
+  }
+
   if (order) {
     events.push({
       type: 'ORDER_CREATED',
@@ -217,8 +298,9 @@ export function updateOrders(
   const expiredOrders: Order[] = [];
   
   for (const order of context.orders) {
-    // Update deadline
-    order.deadline -= dt;
+    // Update deadline; Time Warp slows deadline drain by 25%.
+    const deadlineDt = context.flags.timeWarp ? dt * 0.75 : dt;
+    order.deadline -= deadlineDt;
     
     // Check for expiration
     if (order.deadline <= 0) {
@@ -263,9 +345,15 @@ export function completeOrder(
     },
   });
   
-  // Track VIP orders
+  // Track special order classes for shift results and scoring.
   if (order.priority === 'vip') {
     context.stats.vipOrdersCompleted = (context.stats.vipOrdersCompleted || 0) + 1;
+  }
+  if (order.orderClass === 'batch') {
+    context.stats.batchOrdersCompleted = (context.stats.batchOrdersCompleted || 0) + 1;
+  }
+  if (order.orderClass === 'contract') {
+    context.stats.contractOrdersCompleted = (context.stats.contractOrdersCompleted || 0) + 1;
   }
 }
 

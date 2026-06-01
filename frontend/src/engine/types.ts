@@ -414,6 +414,14 @@ export interface SimulationFlags {
   timeWarp: boolean;           // Slower deadline drain
   emergencyBrake: boolean;     // One-time HP save
   predictivePathing: boolean;  // Pre-reserve retrieval paths
+  contractOrders?: boolean;    // Contract/debt upgrades can spawn contract orders
+  
+  // Numeric upgrade modifiers (optional so old fixtures remain concise)
+  craneSpeedBonus?: number;    // Additive multiplier, e.g. 0.1 = +10%
+  transferTimeBonus?: number;  // Additive reduction, e.g. 0.1 = -10% time
+  shiftTimeBonus?: number;     // Additive seconds
+  deadlineBonus?: number;      // Additive multiplier, e.g. 0.1 = +10% deadline
+  epRecoveryMultiplier?: number; // Difficulty/economy tuning multiplier
   
   // Grid modifiers
   blockedCells: number;        // Number of blocked cells to generate
@@ -457,6 +465,7 @@ export interface SimulationContext {
   // --- NEW: Breach tracking ---
   integrity: number;                 // Current system integrity (HP)
   maxIntegrity: number;              // Max system integrity
+  emergencyBrakeUsed?: boolean;      // One-shot guard for Emergency Brake
   
   // --- NEW: Active abilities ---
   activeAbilities: {
@@ -473,6 +482,7 @@ export interface SimulationContext {
   // Order generation
   orderSpawnRate: number;           // Seconds between orders
   orderDeadlineBase: number;        // Base seconds for order deadlines
+  vipOrderChance?: number;          // Shift-scaled VIP chance
   lastOrderTime: number;            // Time of last order spawn
   rng: RNG;
   
@@ -510,6 +520,7 @@ export type SimulationEventType =
   | 'BATCH_CHILD_COMPLETED'
   | 'BATCH_PARENT_COMPLETED'
   | 'BATCH_PARENT_FAILED'
+  | 'EMERGENCY_BRAKE_TRIGGERED'
   | 'DIAGNOSTIC_UPDATED';
 
 export interface SimulationEvent {

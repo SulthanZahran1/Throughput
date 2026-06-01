@@ -3,6 +3,7 @@ import type { RNG } from '../engine/rng';
 import type { HeldUpgrade, ShiftResult, RunResult } from '../engine/types';
 import { createRng } from '../engine/rng';
 import { getRandomModifier } from '../data/modifiers';
+import { UPGRADES, arePrerequisitesMet, getUpgrade } from '../data/upgrades';
 
 export interface RunState {
   // Run status
@@ -48,6 +49,7 @@ export interface RunActions {
   // HP management
   damageHp: (amount: number) => boolean; // Returns true if HP reached 0
   healHp: (amount: number) => void;
+  setHp: (amount: number) => void;
   
   // Upgrades
   pickUpgrade: (upgradeId: string) => void;
@@ -124,12 +126,20 @@ export const useRunStore = create<RunState & RunActions>((set, get) => ({
     return result;
   },
   
-  advanceToNextShift: () => set((state) => ({
-    currentShift: state.currentShift + 1,
-    currentModifier: state.nextModifier,
-    nextModifier: null,
-    offeredCards: [],
-  })),
+  advanceToNextShift: () => set((state) => {
+    const usedModifiers = state.nextModifier
+      ? [...state.usedModifiers, state.nextModifier]
+      : state.usedModifiers;
+    const nextModifier = state.rng ? getRandomModifier(usedModifiers, state.rng).id : null;
+
+    return {
+      currentShift: state.currentShift + 1,
+      currentModifier: state.nextModifier,
+      nextModifier,
+      usedModifiers,
+      offeredCards: [],
+    };
+  }),
   
   applyShiftResult: (result) => set((state) => ({
     shiftResults: [...state.shiftResults, result],
@@ -146,25 +156,60 @@ export const useRunStore = create<RunState & RunActions>((set, get) => ({
   healHp: (amount) => set((state) => ({
     hp: Math.min(state.maxHp, state.hp + amount),
   })),
-  
-  pickUpgrade: (upgradeId) => set((state) => ({
-    heldUpgrades: [...state.heldUpgrades, {
-      id: upgradeId,
-      name: upgradeId, // Will be resolved from data
-      rarity: 'common', // Will be resolved from data
-    }],
+
+  setHp: (amount) => set((state) => ({
+    hp: Math.max(0, Math.min(state.maxHp, amount)),
   })),
+  
+  pickUpgrade: (upgradeId) => {
+    const upgrade = getUpgrade(upgradeId);
+    set((state) => ({
+      heldUpgrades: [...state.heldUpgrades, {
+        id: upgradeId,
+        name: upgrade?.name ?? upgradeId,
+        rarity: upgrade?.rarity ?? 'common',
+      }],
+    }));
+  },
   
   generateOffering: (availableUpgrades, count = 3) => {
     const state = get();
     if (!state.rng) return;
     
-    // Filter out already held upgrades and pick random ones
     const heldIds = new Set(state.heldUpgrades.map(u => u.id));
-    const pool = availableUpgrades.filter(id => !heldIds.has(id));
-    
-    const shuffled = state.rng.shuffle([...pool]);
-    const offering = shuffled.slice(0, count);
+    const heldIdList = Array.from(heldIds);
+    const eligible = availableUpgrades.filter(id => {
+      if (heldIds.has(id)) return false;
+      const upgrade = getUpgrade(id);
+      return upgrade ? arePrerequisitesMet(upgrade, heldIdList) : false;
+    });
+
+    const common = eligible.filter(id => getUpgrade(id)?.rarity === 'common');
+    const rare = eligible.filter(id => getUpgrade(id)?.rarity === 'rare');
+    const epic = eligible.filter(id => getUpgrade(id)?.rarity === 'epic');
+    const rarityWeights = state.currentShift >= 5
+      ? { common: 40, rare: 35, epic: 25 }
+      : { common: 60, rare: 30, epic: 10 };
+    const offering: string[] = [];
+
+    while (offering.length < count && offering.length < eligible.length) {
+      const pickRarity = state.rng.nextWeighted([
+        { item: 'common' as const, weight: common.some(id => !offering.includes(id)) ? rarityWeights.common : 0 },
+        { item: 'rare' as const, weight: rare.some(id => !offering.includes(id)) ? rarityWeights.rare : 0 },
+        { item: 'epic' as const, weight: epic.some(id => !offering.includes(id)) ? rarityWeights.epic : 0 },
+      ]);
+      const bucket = pickRarity === 'common' ? common : pickRarity === 'rare' ? rare : epic;
+      const remaining = bucket.filter(id => !offering.includes(id));
+      if (remaining.length === 0) break;
+      offering.push(state.rng.nextItem(remaining));
+    }
+
+    if (offering.length < count) {
+      for (const id of state.rng.shuffle([...eligible])) {
+        if (!offering.includes(id)) offering.push(id);
+        if (offering.length >= count) break;
+      }
+    }
     
     set({ offeredCards: offering });
   },
@@ -172,8 +217,9 @@ export const useRunStore = create<RunState & RunActions>((set, get) => ({
   useReroll: () => {
     const state = get();
     if (state.rerollsRemaining <= 0 || !state.rng) return false;
-    
+
     set({ rerollsRemaining: state.rerollsRemaining - 1 });
+    get().generateOffering(UPGRADES.map(upgrade => upgrade.id));
     return true;
   },
   

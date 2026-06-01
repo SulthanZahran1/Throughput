@@ -127,7 +127,7 @@ export const UPGRADES: UpgradeDefinition[] = [
     maxCount: 3,
     unlockCost: 50,
     prerequisites: [],
-    appliesFlags: {},
+    appliesFlags: { craneSpeedBonus: 0.1 },
   },
   {
     id: 'faster_transfer_1',
@@ -138,7 +138,7 @@ export const UPGRADES: UpgradeDefinition[] = [
     maxCount: 3,
     unlockCost: 50,
     prerequisites: [],
-    appliesFlags: {},
+    appliesFlags: { transferTimeBonus: 0.1 },
   },
   {
     id: 'more_time_1',
@@ -149,7 +149,7 @@ export const UPGRADES: UpgradeDefinition[] = [
     maxCount: 3,
     unlockCost: 50,
     prerequisites: [],
-    appliesFlags: {},
+    appliesFlags: { shiftTimeBonus: 10 },
   },
   {
     id: 'slower_deadlines_1',
@@ -160,7 +160,7 @@ export const UPGRADES: UpgradeDefinition[] = [
     maxCount: 3,
     unlockCost: 50,
     prerequisites: [],
-    appliesFlags: {},
+    appliesFlags: { deadlineBonus: 0.1 },
   },
   
   // === SPECIAL UPGRADES ===
@@ -185,6 +185,28 @@ export const UPGRADES: UpgradeDefinition[] = [
     unlockCost: 500,
     prerequisites: ['second_crane'],
     appliesFlags: { multiCrane: 3 },
+  },
+  {
+    id: 'hostile_sla',
+    name: 'Hostile SLA',
+    description: 'Opt into contract orders with harsher breach damage but premium completion rewards',
+    rarity: 'rare',
+    category: 'special',
+    maxCount: 1,
+    unlockCost: 200,
+    prerequisites: ['vip_clients'],
+    appliesFlags: { contractOrders: true, deadlineBonus: 0.08 },
+  },
+  {
+    id: 'debt_financing',
+    name: 'Debt Financing',
+    description: 'Start handling debt-backed contracts for bonus payouts; breach penalties are explicit on each card',
+    rarity: 'epic',
+    category: 'special',
+    maxCount: 1,
+    unlockCost: 350,
+    prerequisites: ['vip_clients'],
+    appliesFlags: { contractOrders: true, epRecoveryMultiplier: 1.15 },
   },
 ];
 
@@ -251,6 +273,12 @@ export function applyUpgradesToFlags(
     timeWarp: false,
     emergencyBrake: false,
     predictivePathing: false,
+    contractOrders: false,
+    craneSpeedBonus: 0,
+    transferTimeBonus: 0,
+    shiftTimeBonus: 0,
+    deadlineBonus: 0,
+    epRecoveryMultiplier: 1,
     blockedCells: 0,
     multiCrane: 1,
     ...flags,
@@ -259,7 +287,23 @@ export function applyUpgradesToFlags(
   for (const id of upgradeIds) {
     const upgrade = getUpgrade(id);
     if (upgrade) {
-      Object.assign(result, upgrade.appliesFlags);
+      const numericKeys = ['craneSpeedBonus', 'transferTimeBonus', 'shiftTimeBonus', 'deadlineBonus'] as const;
+      for (const key of numericKeys) {
+        if (typeof upgrade.appliesFlags[key] === 'number') {
+          result[key] = (result[key] ?? 0) + upgrade.appliesFlags[key];
+        }
+      }
+      if (typeof upgrade.appliesFlags.epRecoveryMultiplier === 'number') {
+        result.epRecoveryMultiplier = (result.epRecoveryMultiplier ?? 1) * upgrade.appliesFlags.epRecoveryMultiplier;
+      }
+      Object.assign(
+        result,
+        Object.fromEntries(
+          Object.entries(upgrade.appliesFlags).filter(([key]) =>
+            ![...numericKeys, 'epRecoveryMultiplier'].includes(key as typeof numericKeys[number] | 'epRecoveryMultiplier')
+          )
+        )
+      );
     }
   }
   

@@ -54,6 +54,7 @@ export function createSimulationContext(
     totalShiftTime: number;
     orderSpawnRate: number;
     orderDeadlineBase: number;
+    vipOrderChance?: number;
     craneCount: number;
     craneSpeed: number;
     transferTime: number;
@@ -101,6 +102,7 @@ export function createSimulationContext(
     ep: createEpState(),
     integrity: startingIntegrity,
     maxIntegrity,
+    emergencyBrakeUsed: false,
     activeAbilities: {
       turbo: false,
       turboRemaining: 0,
@@ -113,6 +115,7 @@ export function createSimulationContext(
     },
     orderSpawnRate: params.orderSpawnRate,
     orderDeadlineBase: params.orderDeadlineBase,
+    vipOrderChance: 'vipOrderChance' in params ? (params as typeof params & { vipOrderChance?: number }).vipOrderChance : undefined,
     lastOrderTime: -params.orderSpawnRate,
     rng,
     stats: {
@@ -217,6 +220,17 @@ export function tickSimulation(
 
       removeOrders(context, expiredOrders);
 
+      // Emergency Brake is a one-shot HP save from the roguelite upgrade pool.
+      if (context.integrity <= 0 && context.flags.emergencyBrake && !context.emergencyBrakeUsed) {
+        context.integrity = 1;
+        context.emergencyBrakeUsed = true;
+        events.push({
+          type: 'EMERGENCY_BRAKE_TRIGGERED',
+          timestamp: context.realTime,
+          data: { remaining: context.integrity },
+        });
+      }
+
       // Check for run-ending condition
       if (context.integrity <= 0) {
         events.push({
@@ -260,11 +274,17 @@ export function tickSimulation(
   if (events.length > 0) {
     const queueCleared = trackQueueClear(context.ep, context.orders.length + 1, context.orders.length);
     if (queueCleared > 0) {
-      context.stats.epRecovered += queueCleared;
+      const multiplier = context.flags.epRecoveryMultiplier ?? 1;
+      const adjustedAmount = Math.max(1, Math.floor(queueCleared * multiplier));
+      const delta = adjustedAmount - queueCleared;
+      if (delta !== 0) {
+        context.ep.current = Math.min(context.ep.max, context.ep.current + delta);
+      }
+      context.stats.epRecovered += adjustedAmount;
       events.push({
         type: 'EP_CHANGED',
         timestamp: context.realTime,
-        data: { amount: queueCleared, reason: 'queue_clear', total: context.ep.current },
+        data: { amount: adjustedAmount, reason: 'queue_clear', total: context.ep.current },
       });
     }
   }
@@ -550,12 +570,19 @@ function trackOrderCompleteForEp(
   const gain: EpGain | null = trackOrderComplete(context.ep, order);
 
   if (gain) {
-    context.stats.epRecovered += gain.amount;
+    const multiplier = context.flags.epRecoveryMultiplier ?? 1;
+    const adjustedAmount = Math.max(1, Math.floor(gain.amount * multiplier));
+    const delta = adjustedAmount - gain.amount;
+    if (delta !== 0) {
+      context.ep.current = Math.min(context.ep.max, context.ep.current + delta);
+    }
+
+    context.stats.epRecovered += adjustedAmount;
     events.push({
       type: 'EP_CHANGED',
       timestamp: context.realTime,
       data: {
-        amount: gain.amount,
+        amount: adjustedAmount,
         reason: gain.reason,
         total: context.ep.current,
       },

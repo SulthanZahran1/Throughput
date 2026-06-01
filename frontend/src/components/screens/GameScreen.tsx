@@ -3,10 +3,9 @@ import { useGameStore, useRunStore, useUiStore } from '../../store';
 import { useGameLoop } from '../../hooks';
 import { GRID_CELL_SIZE, GRID_GAP, ITEM_COLORS, SLOT_COLORS } from '../../constants/config';
 import { generateShiftResult, activateAbility, switchSimulationPolicy } from '../../engine/simulation';
-import { getRandomModifier } from '../../data/modifiers';
 import { UPGRADES } from '../../data/upgrades';
 import { POLICY_NAMES, getBreachDamageLabel } from '../../engine/types';
-import type { Slot, Crane, Order, SimulationEvent, SimulationContext } from '../../engine/types';
+import type { Slot, Crane, Order, SimulationEvent, SimulationContext, AutomationPolicy } from '../../engine/types';
 import type { AbilityId, ConfirmActionType } from '../../store/uiStore';
 
 // Phase 3 game components
@@ -21,8 +20,8 @@ import { formatTime } from '../../utils/formatters';
 export function GameScreen() {
   const { context, isPaused, setPaused, reset: resetGame } = useGameStore();
   const { 
-    hp, maxHp, currentShift, isActive, rng, usedModifiers,
-    applyShiftResult, damageHp, advanceToNextShift, setNextModifier, endRun,
+    hp, maxHp, currentShift, isActive,
+    applyShiftResult, setHp, advanceToNextShift, endRun,
     generateOffering
   } = useRunStore();
   const {
@@ -55,16 +54,14 @@ export function GameScreen() {
     // Apply to run state
     applyShiftResult(result);
     
-    // Calculate HP loss from failed orders
-    const hpLoss = result.ordersFailed;
-    if (hpLoss > 0) {
-      const isDead = damageHp(hpLoss);
-      if (isDead) {
-        endRun(false);
-        resetGame();
-        navigateTo('run_over');
-        return;
-      }
+    // The engine already applies variable breach damage and integrity abilities.
+    // Sync run HP to the final shift integrity instead of re-damaging by order count.
+    setHp(context.integrity);
+    if (context.integrity <= 0) {
+      endRun(false);
+      resetGame();
+      navigateTo('run_over');
+      return;
     }
     
     // Check for victory (completed 8 shifts)
@@ -73,12 +70,6 @@ export function GameScreen() {
       resetGame();
       navigateTo('victory');
       return;
-    }
-    
-    // Generate next modifier
-    if (rng) {
-      const nextMod = getRandomModifier(usedModifiers, rng);
-      setNextModifier(nextMod.id);
     }
     
     // Advance to next shift
@@ -92,7 +83,7 @@ export function GameScreen() {
     
     // Navigate to upgrade pick
     navigateTo('upgrade_pick');
-  }, [context, currentShift, rng, usedModifiers, applyShiftResult, damageHp, advanceToNextShift, setNextModifier, endRun, generateOffering, resetGame, navigateTo]);
+  }, [context, currentShift, applyShiftResult, setHp, advanceToNextShift, endRun, generateOffering, resetGame, navigateTo]);
 
   const handleShiftEndCallback = useCallback(() => {
     console.log('Shift ended, handling...');
@@ -159,9 +150,9 @@ export function GameScreen() {
   }, [context, selectedAbility, clearAbility]);
 
   // Handle policy switch
-  const handlePolicySwitch = useCallback((policy: string) => {
+  const handlePolicySwitch = useCallback((policy: AutomationPolicy) => {
     if (!context) return;
-    switchSimulationPolicy(context, policy as any);
+    switchSimulationPolicy(context, policy);
     useGameStore.getState().setContext({ ...context });
   }, [context]);
 
@@ -337,7 +328,7 @@ export function GameScreen() {
       <PolicyPickerSheet
         currentPolicy={currentPolicy}
         policyCooldownRemaining={policyCooldownRemaining}
-        onSelect={handlePolicySwitch as any}
+        onSelect={handlePolicySwitch}
       />
 
       <IntegrityActionConfirmSheet

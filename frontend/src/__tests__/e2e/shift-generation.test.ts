@@ -165,9 +165,11 @@ describe('Shift Generation', () => {
       expect(params.craneCount).toBe(3);
     });
 
-    it('without vip_clients, vipOrderChance is 0', () => {
-      const params = generateShiftParameters(5, 12345, 'normal', [], null, noUpgradeFlags);
-      expect(params.vipOrderChance).toBe(0);
+    it('introduces VIP pressure from shift 2 even without the old vip_clients gate', () => {
+      const shift1 = generateShiftParameters(1, 12345, 'normal', [], null, noUpgradeFlags);
+      const shift5 = generateShiftParameters(5, 12345, 'normal', [], null, noUpgradeFlags);
+      expect(shift1.vipOrderChance).toBe(0);
+      expect(shift5.vipOrderChance).toBeGreaterThan(0);
     });
 
     it('with vip_clients flag, vipOrderChance is > 0 on shifts that support it', () => {

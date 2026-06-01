@@ -1,9 +1,11 @@
 import { useUiStore, useRunStore } from '../../store';
 import { UPGRADES } from '../../data/upgrades';
+import { getEscalation } from '../../data/escalation';
 
 export function UpgradePickScreen() {
   const { navigateTo } = useUiStore();
-  const { offeredCards, pickUpgrade } = useRunStore();
+  const { offeredCards, pickUpgrade, useReroll: rerollOffering, rerollsRemaining, currentShift, nextModifier, difficulty } = useRunStore();
+  const nextShift = getEscalation(currentShift + 1);
   
   const handlePick = (upgradeId: string) => {
     pickUpgrade(upgradeId);
@@ -15,12 +17,20 @@ export function UpgradePickScreen() {
       <div className="absolute inset-0 grid-bg opacity-20 pointer-events-none" />
       
       <div className="relative z-10 w-full max-w-6xl">
-        <div className="text-center mb-12">
+        <div className="text-center mb-8">
           <div className="text-blue-500 font-mono tracking-[0.3em] uppercase text-xs mb-2">Technical Enhancement Required</div>
           <h1 className="text-5xl font-black text-white italic tracking-tighter text-glow">SELECT UPGRADE</h1>
         </div>
+
+        <div className="mx-auto mb-8 grid max-w-3xl grid-cols-2 gap-3 rounded-2xl border border-slate-800 bg-slate-900/80 p-4 text-xs font-mono uppercase tracking-wider text-slate-400 md:grid-cols-5">
+          <div><span className="block text-slate-600">Next Shift</span><span className="text-white">{currentShift + 1}</span></div>
+          <div><span className="block text-slate-600">Difficulty</span><span className="text-orange-300">{difficulty}</span></div>
+          <div><span className="block text-slate-600">Orders</span><span className="text-cyan-300">{nextShift.orderSpawnRate}s</span></div>
+          <div><span className="block text-slate-600">Deadline</span><span className="text-yellow-300">{nextShift.orderDeadlineBase}s</span></div>
+          <div><span className="block text-slate-600">Modifier</span><span className="text-fuchsia-300">{nextModifier ?? 'none'}</span></div>
+        </div>
         
-        <div className="flex justify-center gap-6">
+        <div className="flex flex-col items-center gap-6 lg:flex-row lg:justify-center">
           {offeredCards.map((cardId) => {
             const upgrade = UPGRADES.find(u => u.id === cardId);
             if (!upgrade) return null;
@@ -87,6 +97,16 @@ export function UpgradePickScreen() {
               </div>
             );
           })}
+        </div>
+
+        <div className="mt-8 flex justify-center">
+          <button
+            onClick={() => rerollOffering()}
+            disabled={rerollsRemaining <= 0}
+            className="rounded-full border border-slate-700 px-6 py-3 text-xs font-black uppercase tracking-[0.2em] text-slate-300 transition hover:border-blue-400 hover:text-white disabled:cursor-not-allowed disabled:opacity-40"
+          >
+            Reroll Offering ({rerollsRemaining})
+          </button>
         </div>
       </div>
     </div>
