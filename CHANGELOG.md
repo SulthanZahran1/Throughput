@@ -5,6 +5,16 @@ All notable changes to this project will be documented in this file.
 ## [Unreleased]
 
 ### Added
+- **Issue completion pass: Phase 4/5/vertical-slice glue** — Completed the remaining gameplay gaps behind the open GitHub issues.
+  - Added contract/debt upgrades (`hostile_sla`, `debt_financing`) that opt players into explicit contract orders with visible breach damage/rewards.
+  - Enabled same-type batch order spawning from Shift 3, and Shift 2+ VIP pressure without requiring the old `vip_clients` gate.
+  - Implemented stackable upgrade effects for crane speed, transfer time, shift time, and deadline length.
+  - Added rarity-weighted upgrade offerings, prerequisite filtering, real rerolls, resolved held-upgrade metadata, and next-shift preview UI.
+  - Replaced the placeholder unlock shop with a functional crate-based unlock screen.
+  - Applied difficulty EP recovery tuning (Normal 100%, Hard 80%, Brutal 60%), Time Warp deadline drain, and Emergency Brake one-shot save.
+  - Synced run HP from engine integrity so variable breach damage and integrity abilities carry across shifts correctly.
+
+### Added
 - **Phase 3: Mobile-First UI** — Complete mobile-first responsive UI for the hybrid operations-manager gameplay
   - `components/game/TopHUD.tsx` — Compact top bar with Shift number, countdown timer, System Integrity chunks, Emergency Power meter, Queue load, and Policy indicator
   - `components/game/MobileOperationsBoard.tsx` — Operations board for mobile with Flow Status (input/output/storage), Zone Summaries (fullness % + risk labels), and Crane Task Board (per-crane job status)
