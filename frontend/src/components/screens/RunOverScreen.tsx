@@ -21,6 +21,7 @@ export function RunOverScreen() {
   const { navigateTo } = useUiStore();
   const metaState = useMetaStore();
   const { recordRun } = metaState;
+  const [cratesEarned, setCratesEarned] = React.useState(0);
 
   React.useEffect(() => {
     const result = useRunStore.getState().endRun(false);
@@ -28,7 +29,8 @@ export function RunOverScreen() {
       recordRun(result);
 
       // Fire-and-forget POST /api/runs
-      const cratesEarned = calculateCrateReward(result);
+      const crates = calculateCrateReward(result);
+      setCratesEarned(crates);
       api.submitRun({
         deviceId: metaState.deviceId,
         seed: result.seed,
@@ -54,7 +56,7 @@ export function RunOverScreen() {
       <div className="relative z-10 space-y-8 max-w-2xl">
         <div className="relative">
           <div className="absolute -inset-10 bg-red-500/20 blur-3xl rounded-full" />
-          <h1 className="relative text-9xl font-black text-red-500 italic tracking-tighter text-glow">
+          <h1 className="relative text-6xl sm:text-8xl lg:text-9xl font-black text-red-500 italic tracking-tighter text-glow">
             TERMINATED
           </h1>
           <div className="text-xl font-mono text-red-500/70 tracking-widest uppercase">
@@ -70,7 +72,7 @@ export function RunOverScreen() {
           <div className="grid grid-cols-2 gap-4 mb-8">
             <div className="bg-slate-950/50 p-4 border border-slate-800">
               <div className="text-[10px] text-slate-500 uppercase font-bold">Crates Salvaged</div>
-              <div className="text-3xl font-black text-white">+0</div>
+              <div className="text-3xl font-black text-white">+{cratesEarned}</div>
             </div>
             <div className="bg-slate-950/50 p-4 border border-slate-800">
               <div className="text-[10px] text-slate-500 uppercase font-bold">Failure Node</div>

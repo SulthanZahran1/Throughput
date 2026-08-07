@@ -79,7 +79,7 @@ export function MainMenuScreen() {
       {/* Title Section */}
       <div className="relative mb-12 text-center">
         <div className="absolute -inset-4 bg-blue-500/10 blur-xl rounded-full" />
-        <h1 className="relative text-8xl font-black text-white tracking-[0.2em] italic text-glow">
+        <h1 className="relative text-5xl sm:text-7xl lg:text-8xl font-black text-white tracking-[0.2em] italic text-glow">
           THROUGH<span className="text-blue-500">PUT</span>
         </h1>
         <div className="mt-2 text-blue-400 font-mono tracking-widest text-sm uppercase opacity-70">
