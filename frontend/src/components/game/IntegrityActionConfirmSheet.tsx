@@ -86,7 +86,7 @@ export function IntegrityActionConfirmSheet({ contextOrders, hp, onConfirm }: In
 
               {hp <= 0 && (
                 <div className="bg-red-500/20 border border-red-500/40 rounded-lg p-2.5 text-center">
-                  <p className="text-xs font-bold text-red-400">⚠ Cannot afford — 0 System Integrity</p>
+                  <p className="text-xs font-bold text-red-400">⚠ Cannot afford: 0 System Integrity</p>
                 </div>
               )}
             </div>
