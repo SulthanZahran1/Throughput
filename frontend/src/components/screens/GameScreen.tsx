@@ -193,7 +193,7 @@ export function GameScreen() {
   const policyName = POLICY_NAMES[currentPolicy as keyof typeof POLICY_NAMES] || currentPolicy;
 
   return (
-    <div className="flex flex-col h-screen bg-[#0a0c10] relative overflow-hidden">
+    <div className="flex flex-col h-[100dvh] bg-[#0a0c10] relative overflow-hidden">
       {/* Background patterns */}
       <div className="absolute inset-0 grid-bg opacity-10 pointer-events-none" />
       

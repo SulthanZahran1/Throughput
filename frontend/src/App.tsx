@@ -113,7 +113,7 @@ export default function App() {
   const ScreenComponent = screenComponents[currentScreen] || MainMenuScreen;
   
   return (
-    <div className="w-full h-screen bg-black overflow-hidden selection:bg-blue-500/30">
+    <div className="w-full h-[100dvh] bg-black overflow-hidden selection:bg-blue-500/30">
       {/* Global CRT Flicker Effect */}
       <div className="fixed inset-0 pointer-events-none z-[100] animate-pulse opacity-[0.03] bg-white mix-blend-overlay" />
       
