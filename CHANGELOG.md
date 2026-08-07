@@ -4,6 +4,10 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### Fixed
+- **Mobile viewport stability** - Replaced `h-screen`/`100vh` with `100dvh` in `App.tsx`, `GameScreen.tsx`, and `index.css` so the layout no longer jumps when the mobile browser chrome collapses/expands.
+- **Copy** - Replaced an em-dash in the Integrity Action Confirm sheet warning with a colon.
+
 ### Added
 - **Issue completion pass: Phase 4/5/vertical-slice glue** — Completed the remaining gameplay gaps behind the open GitHub issues.
   - Added contract/debt upgrades (`hostile_sla`, `debt_financing`) that opt players into explicit contract orders with visible breach damage/rewards.
